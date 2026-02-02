@@ -1,0 +1,5 @@
+# Ignore a specific file
+SGJobData.csv
+
+# Or ignore all CSV files
+*.csv
