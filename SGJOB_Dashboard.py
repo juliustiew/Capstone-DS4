@@ -1041,76 +1041,140 @@ def create_pdf_export(df: pd.DataFrame, persona: str, recommendations: Optional[
         return None
 
 
-def create_skill_job_relevance_chart(df: pd.DataFrame, user_skills: List[str]) -> go.Figure:
+@st.cache_data
+def create_skill_job_relevance_chart(_df: pd.DataFrame, _user_skills: tuple) -> go.Figure:
     """
     Create an interactive visualization showing skill relevance to respective jobs.
     
     Shows which jobs match the user's skills and how relevant each skill is to available positions.
     
     Args:
-        df: Processed DataFrame
-        user_skills: User's current skills
+        _df: Processed DataFrame (cached parameter)
+        _user_skills: User's current skills as tuple (for caching)
         
     Returns:
         Plotly Figure showing skill-job relevance
     """
-    if not user_skills:
-        # Return empty chart if no skills
-        return go.Figure().update_layout(
-            title="No skills selected",
+    user_skills = list(_user_skills) if isinstance(_user_skills, tuple) else _user_skills
+    
+    if not user_skills or len(user_skills) == 0:
+        # Return empty message if no skills
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No skills selected to analyze",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=14, color='#e0e7ff')
+        )
+        fig.update_layout(
+            title="Skill Relevance Analysis",
             font=dict(color='#e0e7ff'),
             plot_bgcolor='#0f1419',
-            paper_bgcolor='#0f1419'
+            paper_bgcolor='#0f1419',
+            height=400
         )
+        return fig
     
-    # Count jobs that mention each skill
-    skill_job_count = {}
-    skill_salary_avg = {}
-    
-    for skill in user_skills:
-        # Search for skill mentions in job descriptions and requirements
-        skill_matches = df[
-            (df['jobDescription'].str.contains(skill, case=False, na=False)) |
-            (df['metadata_Skills'].str.contains(skill, case=False, na=False))
-        ]
-        skill_job_count[skill] = len(skill_matches)
-        skill_salary_avg[skill] = skill_matches['average_salary'].mean() if len(skill_matches) > 0 else 0
-    
-    # Sort by count
-    sorted_skills = sorted(skill_job_count.items(), key=lambda x: x[1], reverse=True)
-    skills_sorted = [s[0] for s in sorted_skills]
-    counts_sorted = [s[1] for s in sorted_skills]
-    salaries_sorted = [skill_salary_avg[s] for s in skills_sorted]
-    
-    # Create bar chart with salary overlay
-    fig = go.Figure()
-    
-    # Add bar chart for job count
-    fig.add_trace(go.Bar(
-        x=skills_sorted,
-        y=counts_sorted,
-        name='Jobs Matching Skill',
-        marker=dict(color='#3b82f6', opacity=0.8),
-        text=counts_sorted,
-        textposition='auto',
-        hovertemplate='<b>%{x}</b><br>Jobs: %{y}<br>Avg Salary: SGD %{customdata:,.0f}<extra></extra>',
-        customdata=salaries_sorted
-    ))
-    
-    fig.update_layout(
-        title='Individual Skills Relevance to Available Jobs',
-        xaxis_title='Your Skills',
-        yaxis_title='Number of Matching Jobs',
-        height=450,
-        font=dict(size=12, family='Segoe UI', color='#e0e7ff'),
-        plot_bgcolor='#0f1419',
-        paper_bgcolor='#0f1419',
-        hovermode='x unified',
-        xaxis=dict(tickangle=-45),
-        margin=dict(b=100)
-    )
-    
-    return fig
+    try:
+        df = _df.copy()
+        
+        # For very large datasets, sample for faster processing
+        if len(df) > 100000:
+            df = df.sample(n=min(100000, len(df)), random_state=42)
+        
+        # Count job postings for each skill
+        skill_job_count = {}
+        skill_salary_avg = {}
+        
+        # Get available columns
+        available_cols = df.columns.tolist()
+        search_columns = []
+        if 'title' in available_cols:
+            search_columns.append('title')
+        if 'primary_category' in available_cols:
+            search_columns.append('primary_category')
+        
+        # If no searchable columns found, use equal distribution
+        if not search_columns:
+            equal_count = len(df) // max(1, len(user_skills))
+            avg_salary = df['average_salary'].mean() if len(df) > 0 else 0
+            for skill in user_skills:
+                skill_job_count[skill] = equal_count
+                skill_salary_avg[skill] = avg_salary
+        else:
+            # Search for skill mentions in available columns
+            for skill in user_skills:
+                # Create a mask for matching
+                mask = pd.Series([False] * len(df), index=df.index)
+                
+                for col in search_columns:
+                    try:
+                        col_mask = df[col].astype(str).str.contains(skill, case=False, na=False)
+                        mask = mask | col_mask
+                    except Exception:
+                        pass
+                
+                skill_matches = df[mask]
+                skill_job_count[skill] = len(skill_matches)
+                skill_salary_avg[skill] = skill_matches['average_salary'].mean() if len(skill_matches) > 0 else 0
+        
+        # Sort by count
+        sorted_skills = sorted(skill_job_count.items(), key=lambda x: x[1], reverse=True)
+        skills_sorted = [s[0] for s in sorted_skills]
+        counts_sorted = [s[1] for s in sorted_skills]
+        salaries_sorted = [skill_salary_avg.get(s, 0) for s in skills_sorted]
+        
+        # Replace NaN salaries with 0
+        salaries_sorted = [0 if pd.isna(x) else x for x in salaries_sorted]
+        
+        # Create bar chart with salary overlay
+        fig = go.Figure()
+        
+        # Add bar chart for job count
+        fig.add_trace(go.Bar(
+            x=skills_sorted,
+            y=counts_sorted,
+            name='Jobs Matching Skill',
+            marker=dict(color='#3b82f6', opacity=0.8),
+            text=counts_sorted,
+            textposition='auto',
+            hovertemplate='<b>%{x}</b><br>Jobs: %{y}<br>Avg Salary: SGD %{customdata:,.0f}<extra></extra>',
+            customdata=salaries_sorted
+        ))
+        
+        fig.update_layout(
+            title='Individual Skills Relevance to Available Jobs',
+            xaxis_title='Your Skills',
+            yaxis_title='Number of Matching Jobs',
+            height=450,
+            font=dict(size=12, family='Segoe UI', color='#e0e7ff'),
+            plot_bgcolor='#0f1419',
+            paper_bgcolor='#0f1419',
+            hovermode='x unified',
+            xaxis=dict(tickangle=-45),
+            margin=dict(b=100)
+        )
+        
+        return fig
+    except Exception as e:
+        # Return error message if something goes wrong
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Error: {str(e)[:50]}...",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=12, color='#fca5a5')
+        )
+        fig.update_layout(
+            title="Error Loading Chart",
+            font=dict(color='#e0e7ff'),
+            plot_bgcolor='#0f1419',
+            paper_bgcolor='#0f1419',
+            height=400
+        )
+        return fig
 
 
 def create_skill_sankey_diagram(df: pd.DataFrame, user_skills: List[str]) -> go.Figure:
@@ -1973,9 +2037,15 @@ if persona == "Individual":
     st.subheader("🎯 Your Skills Relevance to Available Jobs")
     st.markdown("*Shows how many job positions match each of your skills and average salaries*")
     
-    if user_current_skills:
-        fig_skill_relevance = create_skill_job_relevance_chart(filtered_df, user_current_skills)
-        st.plotly_chart(fig_skill_relevance, use_container_width=True)
+    if user_current_skills and len(user_current_skills) > 0:
+        try:
+            # Convert to tuple for caching
+            skills_tuple = tuple(user_current_skills)
+            fig_skill_relevance = create_skill_job_relevance_chart(filtered_df, skills_tuple)
+            st.plotly_chart(fig_skill_relevance, use_container_width=True)
+        except Exception as e:
+            st.warning(f"⚠️ Could not load skill relevance chart: {str(e)}")
+            st.info("Try refreshing the page or adjusting your filter selections.")
     else:
         st.info("👇 Please select your skills in the 'YOUR PROFILE' section to see relevant jobs.")
     
