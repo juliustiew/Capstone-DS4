@@ -59,23 +59,81 @@ st.set_page_config(
     }
 )
 
-# Custom CSS with modern professional dark theme
+# Initialize theme state
+if 'theme_mode' not in st.session_state:
+    st.session_state.theme_mode = 'auto'  # 'auto', 'light', or 'dark'
+
+# Custom CSS with responsive light/dark theme support
 st.markdown("""
 <style>
+    :root {
+        /* Dark Theme (Default) */
+        --bg-primary: #0f1419;
+        --bg-secondary: #1a1f2e;
+        --bg-tertiary: #1e2936;
+        --bg-quaternary: #243447;
+        --bg-hover: #2d4557;
+        --text-primary: #e0e7ff;
+        --text-secondary: #93c5fd;
+        --text-heading: #ffffff;
+        --border-primary: #3b82f6;
+        --border-secondary: #60a5fa;
+        --success-bg: #065f46;
+        --success-border: #10b981;
+        --success-text: #d1fae5;
+        --warning-bg: #78350f;
+        --warning-border: #fbbf24;
+        --warning-text: #fef3c7;
+        --error-bg: #7f1d1d;
+        --error-border: #f87171;
+        --error-text: #fee2e2;
+        --info-bg: #1e3a8a;
+        --info-border: #60a5fa;
+        --info-text: #dbeafe;
+    }
+    
+    /* Light Theme */
+    @media (prefers-color-scheme: light) {
+        :root {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #f1f5f9;
+            --bg-tertiary: #e2e8f0;
+            --bg-quaternary: #cbd5e1;
+            --bg-hover: #e0e7ff;
+            --text-primary: #1e293b;
+            --text-secondary: #0c4a6e;
+            --text-heading: #0f172a;
+            --border-primary: #3b82f6;
+            --border-secondary: #7dd3fc;
+            --success-bg: #dcfce7;
+            --success-border: #22c55e;
+            --success-text: #166534;
+            --warning-bg: #fef3c7;
+            --warning-border: #f59e0b;
+            --warning-text: #78350f;
+            --error-bg: #fee2e2;
+            --error-border: #ef4444;
+            --error-text: #7f1d1d;
+            --info-bg: #dbeafe;
+            --info-border: #0284c7;
+            --info-text: #0c2340;
+        }
+    }
+    
     * {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
     }
     
     .main {
-        background: linear-gradient(180deg, #0f1419 0%, #1a1f2e 100%);
+        background: var(--bg-primary);
     }
     
     .stMetric {
-        background: linear-gradient(135deg, #1e2936 0%, #243447 100%);
+        background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-quaternary) 100%);
         padding: 1.75rem;
         border-radius: 1rem;
         box-shadow: 0 4px 15px rgba(59, 130, 246, 0.15);
-        border: 2px solid #3b82f6;
+        border: 2px solid var(--border-primary);
         transition: all 0.3s ease;
     }
     
@@ -87,7 +145,7 @@ st.markdown("""
     .stMetric > label {
         font-size: 0.9rem !important;
         font-weight: 600 !important;
-        color: #93c5fd !important;
+        color: var(--text-secondary) !important;
         letter-spacing: 0.5px;
         text-transform: uppercase;
     }
@@ -95,46 +153,46 @@ st.markdown("""
     .stMetric > div > div:nth-child(2) {
         font-size: 2rem !important;
         font-weight: 800 !important;
-        color: #ffffff !important;
+        color: var(--text-heading) !important;
         line-height: 1.2;
         margin-top: 0.5rem;
     }
     
     .metric-container {
-        background: linear-gradient(135deg, #1e2936 0%, #243447 100%);
-        color: #e0e7ff;
+        background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-quaternary) 100%);
+        color: var(--text-primary);
         padding: 1.75rem;
         border-radius: 1rem;
         margin: 1rem 0;
-        border: 2px solid #3b82f6;
+        border: 2px solid var(--border-primary);
         box-shadow: 0 4px 15px rgba(59, 130, 246, 0.15);
     }
     
     .recommendation-box {
-        background: linear-gradient(135deg, #065f46 0%, #047857 100%);
-        border-left: 6px solid #10b981;
+        background: var(--success-bg);
+        border-left: 6px solid var(--success-border);
         padding: 1.5rem;
         border-radius: 0.75rem;
         margin: 1.25rem 0;
-        color: #d1fae5;
+        color: var(--success-text);
         font-weight: 600;
         font-size: 0.95rem;
         box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
     }
     
     .shortage-index {
-        background: linear-gradient(135deg, #7c2d12 0%, #92400e 100%);
-        border-left: 6px solid #fb923c;
+        background: linear-gradient(135deg, var(--warning-bg) 0%, #92400e 100%);
+        border-left: 6px solid var(--warning-border);
         padding: 1.5rem;
         border-radius: 0.75rem;
-        color: #fed7aa;
+        color: var(--warning-text);
         font-weight: 600;
         font-size: 0.95rem;
         box-shadow: 0 4px 12px rgba(251, 146, 60, 0.2);
     }
     
     h1, h2, h3, h4, h5, h6 {
-        color: #ffffff !important;
+        color: var(--text-heading) !important;
         font-weight: 800 !important;
         letter-spacing: -0.5px;
     }
@@ -145,23 +203,23 @@ st.markdown("""
     h4 { font-size: 1.2rem !important; margin: 1.25rem 0 0.5rem 0 !important; }
     
     body, p, span, div {
-        color: #e0e7ff !important;
+        color: var(--text-primary) !important;
     }
     
     .divider {
         margin: 2.5rem 0;
-        border-top: 2px solid #3b82f6;
+        border-top: 2px solid var(--border-primary);
         opacity: 0.3;
     }
     
     .stTabs [role="tablist"] {
-        border-bottom: 2px solid #3b82f6 !important;
+        border-bottom: 2px solid var(--border-primary) !important;
     }
     
     .stTabs [role="tablist"] button {
         font-size: 1.05rem !important;
         font-weight: 700 !important;
-        color: #93c5fd !important;
+        color: var(--text-secondary) !important;
         padding: 1rem 1.75rem !important;
         background-color: transparent !important;
         border: none !important;
@@ -169,12 +227,12 @@ st.markdown("""
     }
     
     .stTabs [role="tablist"] button[aria-selected="true"] {
-        color: #ffffff !important;
-        border-bottom: 3px solid #3b82f6 !important;
+        color: var(--text-heading) !important;
+        border-bottom: 3px solid var(--border-primary) !important;
     }
     
     .stTabs [role="tablist"] button:hover {
-        color: #bfdbfe !important;
+        color: var(--border-secondary) !important;
     }
     
     .stDataFrame {
@@ -190,20 +248,20 @@ st.markdown("""
     }
     
     .stDataFrame td {
-        color: #e0e7ff !important;
+        color: var(--text-primary) !important;
         padding: 0.85rem !important;
-        background-color: #243447 !important;
-        border-bottom: 1px solid #3b82f6 !important;
+        background-color: var(--bg-quaternary) !important;
+        border-bottom: 1px solid var(--border-primary) !important;
     }
     
     .stDataFrame tr:hover td {
-        background-color: #2d4557 !important;
+        background-color: var(--bg-hover) !important;
     }
     
     .stWarning {
-        background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
-        border: 2px solid #fbbf24;
-        color: #fef3c7;
+        background: var(--warning-bg);
+        border: 2px solid var(--warning-border);
+        color: var(--warning-text);
         font-weight: 600;
         padding: 1.25rem !important;
         border-radius: 0.75rem;
@@ -212,9 +270,9 @@ st.markdown("""
     }
     
     .stError {
-        background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
-        border: 2px solid #f87171;
-        color: #fee2e2;
+        background: var(--error-bg);
+        border: 2px solid var(--error-border);
+        color: var(--error-text);
         font-weight: 600;
         padding: 1.25rem !important;
         border-radius: 0.75rem;
@@ -223,9 +281,9 @@ st.markdown("""
     }
     
     .stSuccess {
-        background: linear-gradient(135deg, #065f46 0%, #047857 100%);
-        border: 2px solid #10b981;
-        color: #d1fae5;
+        background: var(--success-bg);
+        border: 2px solid var(--success-border);
+        color: var(--success-text);
         font-weight: 600;
         padding: 1.25rem !important;
         border-radius: 0.75rem;
@@ -234,9 +292,9 @@ st.markdown("""
     }
     
     .stInfo {
-        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
-        border: 2px solid #60a5fa;
-        color: #dbeafe;
+        background: var(--info-bg);
+        border: 2px solid var(--info-border);
+        color: var(--info-text);
         font-weight: 600;
         padding: 1.25rem !important;
         border-radius: 0.75rem;
@@ -245,21 +303,21 @@ st.markdown("""
     }
     
     .stSelectbox, .stMultiselect, .stSlider, .stTextInput {
-        color: #e0e7ff !important;
+        color: var(--text-primary) !important;
     }
     
     .stSelectbox > div > div, .stMultiselect > div > div {
-        background-color: #1e2936 !important;
-        border: 2px solid #3b82f6 !important;
-        color: #e0e7ff !important;
+        background-color: var(--bg-tertiary) !important;
+        border: 2px solid var(--border-primary) !important;
+        color: var(--text-primary) !important;
     }
     
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0f1419 0%, #1a1f2e 100%);
+        background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
     }
     
     section[data-testid="stSidebar"] > div {
-        background: linear-gradient(180deg, #0f1419 0%, #1a1f2e 100%);
+        background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
     }
     
 </style>
@@ -1320,6 +1378,29 @@ persona = st.sidebar.radio(
     help="Choose your role to customize the dashboard view",
     key="persona_selector"
 )
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🎨 THEME SETTINGS")
+
+# Theme selector with three options
+theme_option = st.sidebar.radio(
+    "Theme Mode",
+    options=["Auto (System)", "Dark", "Light"],
+    help="Choose how the dashboard appears: Auto uses your system preference",
+    key="theme_selector"
+)
+
+# Map radio values to session state values
+theme_map = {"Auto (System)": "auto", "Dark": "dark", "Light": "light"}
+st.session_state.theme_mode = theme_map[theme_option]
+
+# Display current theme info
+if st.session_state.theme_mode == "auto":
+    st.sidebar.caption("🔄 Following your system preference")
+elif st.session_state.theme_mode == "dark":
+    st.sidebar.caption("🌙 Dark mode enabled (override)")
+else:
+    st.sidebar.caption("☀️ Light mode enabled (override)")
 
 st.sidebar.markdown("---")
 
