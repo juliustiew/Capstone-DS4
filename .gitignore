@@ -1,5 +1,25 @@
-# Ignore a specific file
+# CSV Data Files
+*.csv
 SGJobData.csv
 
-# Or ignore all CSV files
-*.csvSGJobData.csv
+# Python Virtual Environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
