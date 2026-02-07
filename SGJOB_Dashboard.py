@@ -1434,15 +1434,90 @@ else:
     st.sidebar.caption("☀️ Light mode enabled (override)")
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("### 📁 SELECT DATASET")
+
+# Initialize session state for dataset selection
+if 'dataset_file_path' not in st.session_state:
+    st.session_state.dataset_file_path = "/home/julius/SGJobData.parquet"
+if 'uploaded_file' not in st.session_state:
+    st.session_state.uploaded_file = None
+
+# Dataset selection container
+with st.sidebar.expander("📊 DATASET SELECTION", expanded=True):
+    st.markdown("**Upload or Select Your CSV/Parquet File**")
+    
+    # Option to choose between upload and file path
+    data_source = st.radio(
+        "Data Source",
+        options=["Upload File", "Use Default Dataset", "Specify File Path"],
+        help="Choose how to load your dataset",
+        key="data_source_selector"
+    )
+    
+    if data_source == "Upload File":
+        uploaded_file = st.file_uploader(
+            "Choose CSV or Parquet file",
+            type=["csv", "parquet"],
+            help="Upload your dataset file (CSV or Parquet format)",
+            key="file_uploader"
+        )
+        if uploaded_file is not None:
+            st.session_state.uploaded_file = uploaded_file
+            st.success(f"✅ File loaded: {uploaded_file.name}")
+    
+    elif data_source == "Specify File Path":
+        custom_path = st.text_input(
+            "Enter file path",
+            value=st.session_state.dataset_file_path if st.session_state.dataset_file_path != "/home/julius/SGJobData.parquet" else "",
+            placeholder="/path/to/your/file.csv",
+            help="Provide the full path to your CSV or Parquet file",
+            key="custom_file_path"
+        )
+        if custom_path:
+            st.session_state.dataset_file_path = custom_path
+            st.info(f"📂 Using file: {custom_path}")
+    
+    else:  # Use Default Dataset
+        st.session_state.dataset_file_path = "/home/julius/SGJobData.parquet"
+        st.session_state.uploaded_file = None
+        st.info("📂 Using default dataset: SGJobData.parquet")
+
+st.sidebar.markdown("---")
 
 # Load data
-@st.cache_data
-def load_and_preprocess():
-    df = load_data("/home/julius/SGJobData.parquet")
-    df = preprocess_data(df)
-    return df
+def load_and_preprocess(_file_path: str = None, _uploaded_file=None):
+    """Load and preprocess data from either uploaded file or file path"""
+    try:
+        if _uploaded_file is not None:
+            # Handle uploaded file
+            if _uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(_uploaded_file, on_bad_lines='skip', encoding='utf-8')
+            else:  # parquet
+                df = pd.read_parquet(_uploaded_file)
+            st.sidebar.success(f"✅ Loaded uploaded file: {_uploaded_file.name}")
+        elif _file_path:
+            # Handle file path
+            df = load_data(_file_path)
+            st.sidebar.success(f"✅ Loaded file: {_file_path}")
+        else:
+            # Fallback to default
+            df = load_data("/home/julius/SGJobData.parquet")
+        
+        df = preprocess_data(df)
+        return df
+    except Exception as e:
+        st.sidebar.error(f"❌ Error loading data: {str(e)}")
+        # Try fallback to default
+        try:
+            df = load_data("/home/julius/SGJobData.parquet")
+            df = preprocess_data(df)
+            st.sidebar.warning("⚠️ Using default dataset due to error")
+            return df
+        except:
+            st.error("Cannot load any dataset. Please check file paths and try again.")
+            st.stop()
 
-df = load_and_preprocess()
+df = load_and_preprocess(st.session_state.dataset_file_path, st.session_state.uploaded_file)
 
 # Pre-compute filter options once
 @st.cache_data
