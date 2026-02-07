@@ -1236,7 +1236,7 @@ st.sidebar.markdown("---")
 # Load data
 @st.cache_data
 def load_and_preprocess():
-    df = load_data("/home/julius/Capstone_DS4/SGJobData.csv")
+    df = load_data("/home/julius/SGJobData.csv")
     df = preprocess_data(df)
     return df
 
