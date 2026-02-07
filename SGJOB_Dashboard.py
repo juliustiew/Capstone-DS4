@@ -330,15 +330,18 @@ st.markdown("""
 @st.cache_data
 def load_data(filepath: str) -> pd.DataFrame:
     """
-    Load and cache the SGJobData CSV file.
+    Load and cache the SGJobData file (CSV or Parquet format).
     
     Args:
-        filepath: Path to the CSV file
+        filepath: Path to the data file (CSV or Parquet)
         
     Returns:
         DataFrame with processed job data
     """
-    df = pd.read_csv(filepath, on_bad_lines='skip', encoding='utf-8')
+    if filepath.endswith('.parquet'):
+        df = pd.read_parquet(filepath)
+    else:
+        df = pd.read_csv(filepath, on_bad_lines='skip', encoding='utf-8')
     return df
 
 
@@ -1407,7 +1410,7 @@ st.sidebar.markdown("---")
 # Load data
 @st.cache_data
 def load_and_preprocess():
-    df = load_data("/home/julius/SGJobData.csv")
+    df = load_data("/home/julius/SGJobData.parquet")
     df = preprocess_data(df)
     return df
 
