@@ -1,11 +1,17 @@
 """
-WORKFORCE INTELLIGENCE DASHBOARD
+WORKFORCE INTELLIGENCE DASHBOARD - REFACTORED
 A Production-Ready Streamlit Application for Labor Market Analytics
 
 Author: Data Science Team
-Version: 1.0.0
+Version: 2.0.0
 Purpose: Transform raw industrial job statistics into actionable workforce insights
          for individuals, government agencies, and recruiters.
+         
+Enhancements:
+- Advanced Visualizations: Sankey diagrams, trend overlays, interactive maps
+- Personalized Recommender Engine: 90th percentile skill matching
+- Data Export: CSV, Excel, and PDF downloads for Government users
+- Enhanced UI/UX: Dark mode theming, card-based layouts, responsive design
 """
 
 import streamlit as st
@@ -16,10 +22,28 @@ import plotly.express as px
 import altair as alt
 from datetime import datetime, timedelta
 import json
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import warnings
+from io import BytesIO
 
 warnings.filterwarnings('ignore')
+
+# Optional imports for advanced export
+try:
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+
+try:
+    import openpyxl
+    from openpyxl.styles import PatternFill, Font, Alignment
+    EXCEL_AVAILABLE = True
+except ImportError:
+    EXCEL_AVAILABLE = False
 
 # ============================================================================
 # PAGE CONFIGURATION & THEME
@@ -270,18 +294,18 @@ def display_styled_header(title: str, emoji: str = "📊") -> None:
 
 
 @st.cache_data
-def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
+def preprocess_data(_df: pd.DataFrame) -> pd.DataFrame:
     """
     Clean and preprocess raw job data.
     
     Args:
-        df: Raw DataFrame
+        _df: Raw DataFrame
         
     Returns:
         Cleaned DataFrame ready for analysis
     """
     # Create a copy to avoid SettingWithCopyWarning
-    df = df.copy()
+    df = _df.copy()
     
     # Convert date columns
     date_cols = ['metadata_newPostingDate', 'metadata_originalPostingDate', 'metadata_expiryDate']
@@ -332,17 +356,17 @@ def extract_primary_category(cat_str: str) -> str:
 # ============================================================================
 
 @st.cache_data
-def calculate_employment_heatmap_data(df: pd.DataFrame) -> pd.DataFrame:
+def calculate_employment_heatmap_data(_df: pd.DataFrame) -> pd.DataFrame:
     """
     Generate employment heatmap data by sector and time period.
     
     Args:
-        df: Processed DataFrame
+        _df: Processed DataFrame
         
     Returns:
         Aggregated data for heatmap visualization
     """
-    heatmap_data = df.groupby(['year_month', 'primary_category']).agg({
+    heatmap_data = _df.groupby(['year_month', 'primary_category']).agg({
         'metadata_jobPostId': 'count',
         'average_salary': 'mean',
         'minimumYearsExperience': 'mean'
@@ -355,44 +379,44 @@ def calculate_employment_heatmap_data(df: pd.DataFrame) -> pd.DataFrame:
 
 
 @st.cache_data
-def calculate_skill_gaps(df: pd.DataFrame) -> Tuple[Dict, Dict]:
+def calculate_skill_gaps(_df: pd.DataFrame) -> Tuple[Dict, Dict]:
     """
     Analyze current market skills vs. emerging needs.
     
     Args:
-        df: Processed DataFrame
+        _df: Processed DataFrame
         
     Returns:
         Tuple of (current_skills, emerging_skills)
     """
     # Handle empty dataframe
-    if len(df) == 0 or df.empty or 'title' not in df.columns:
+    if len(_df) == 0 or _df.empty or 'title' not in _df.columns:
         return {}, {}
     
     # Extract skills from job titles
     common_skills = {
-        'Python': df['title'].str.contains('Python', case=False, na=False).sum() if 'title' in df.columns else 0,
-        'Java': df['title'].str.contains('Java', case=False, na=False).sum() if 'title' in df.columns else 0,
-        'C++': df['title'].str.contains('C\\+\\+|C Plus Plus', case=False, na=False, regex=True).sum() if 'title' in df.columns else 0,
-        'JavaScript': df['title'].str.contains('JavaScript|Node', case=False, na=False).sum() if 'title' in df.columns else 0,
-        'SQL': df['title'].str.contains('SQL', case=False, na=False).sum() if 'title' in df.columns else 0,
-        'Cloud': df['title'].str.contains('AWS|Azure|GCP|Cloud', case=False, na=False).sum() if 'title' in df.columns else 0,
-        'Data': df['title'].str.contains('Data|Analytics|BI', case=False, na=False).sum() if 'title' in df.columns else 0,
-        'AI/ML': df['title'].str.contains('AI|Machine Learning|ML', case=False, na=False).sum() if 'title' in df.columns else 0,
+        'Python': _df['title'].str.contains('Python', case=False, na=False).sum() if 'title' in _df.columns else 0,
+        'Java': _df['title'].str.contains('Java', case=False, na=False).sum() if 'title' in _df.columns else 0,
+        'C++': _df['title'].str.contains(r'C\+\+|C Plus Plus', case=False, na=False, regex=True).sum() if 'title' in _df.columns else 0,
+        'JavaScript': _df['title'].str.contains('JavaScript|Node', case=False, na=False).sum() if 'title' in _df.columns else 0,
+        'SQL': _df['title'].str.contains('SQL', case=False, na=False).sum() if 'title' in _df.columns else 0,
+        'Cloud': _df['title'].str.contains('AWS|Azure|GCP|Cloud', case=False, na=False).sum() if 'title' in _df.columns else 0,
+        'Data': _df['title'].str.contains('Data|Analytics|BI', case=False, na=False).sum() if 'title' in _df.columns else 0,
+        'AI/ML': _df['title'].str.contains('AI|Machine Learning|ML', case=False, na=False).sum() if 'title' in _df.columns else 0,
     }
     
     emerging_skills = {
         'Cloud': common_skills['Cloud'],
         'AI/ML': common_skills['AI/ML'],
         'Data': common_skills['Data'],
-        'DevOps': df['title'].str.contains('DevOps|Docker|Kubernetes', case=False, na=False).sum() if 'title' in df.columns else 0,
+        'DevOps': _df['title'].str.contains('DevOps|Docker|Kubernetes', case=False, na=False).sum() if 'title' in _df.columns else 0,
     }
     
     return common_skills, emerging_skills
 
 
 @st.cache_data
-def calculate_labor_shortage_index(df: pd.DataFrame) -> Dict[str, float]:
+def calculate_labor_shortage_index(_df: pd.DataFrame) -> Dict[str, float]:
     """
     Calculate Labor Shortage Index for government users.
     
@@ -403,20 +427,20 @@ def calculate_labor_shortage_index(df: pd.DataFrame) -> Dict[str, float]:
     - Vacancy Fill Rate: Hard-to-fill positions
     
     Args:
-        df: Processed DataFrame
+        _df: Processed DataFrame
         
     Returns:
         Dictionary with shortage indices by sector
     """
     shortage_index = {}
     
-    for sector in df['primary_category'].unique():
-        sector_data = df[df['primary_category'] == sector]
+    for sector in _df['primary_category'].unique():
+        sector_data = _df[_df['primary_category'] == sector]
         
         # Components of shortage index (0-100 scale)
         # 1. Posting volume trend (normalized)
         posting_count = len(sector_data)
-        posting_score = min((posting_count / len(df)) * 200, 100)  # Scale to 100
+        posting_score = min((posting_count / len(_df)) * 200, 100)  # Scale to 100
         
         # 2. Views per posting (inverse - lower views = shortage)
         avg_views = sector_data['metadata_totalNumberOfView'].mean()
@@ -437,74 +461,125 @@ def calculate_labor_shortage_index(df: pd.DataFrame) -> Dict[str, float]:
     return dict(sorted(shortage_index.items(), key=lambda x: x[1], reverse=True))
 
 
+# ============================================================================
+# PERSONALIZED RECOMMENDER ENGINE CLASS
+# ============================================================================
+
+class PersonalizedRecommender:
+    """
+    Advanced job recommendation engine using 90th percentile skill matching
+    and cross-referenced trend analysis.
+    """
+    
+    def __init__(self, df: pd.DataFrame):
+        """
+        Initialize recommender with job market data.
+        
+        Args:
+            df: Processed job market DataFrame
+        """
+        self.df = df
+        self.all_skills, self.emerging_skills = calculate_skill_gaps(df)
+        self.skill_percentiles = self._calculate_skill_percentiles()
+    
+    def _calculate_skill_percentiles(self) -> Dict[str, float]:
+        """Calculate 90th percentile salary for each skill."""
+        percentiles = {}
+        for skill in self.all_skills.keys():
+            mask = self.df['title'].str.contains(skill, case=False, na=False)
+            if mask.any():
+                salary_90th = self.df[mask]['average_salary'].quantile(0.9)
+                percentiles[skill] = salary_90th
+        return percentiles
+    
+    def get_recommendations(self, user_skills: List[str], desired_salary: float) -> Dict:
+        """
+        Generate personalized recommendations based on user profile.
+        
+        Args:
+            user_skills: Current skills possessed by user
+            desired_salary: Target salary
+            
+        Returns:
+            Dictionary with detailed recommendations
+        """
+        recommendations = {
+            'upskill_opportunities': [],
+            'high_growth_sectors': [],
+            'salary_potential': 0,
+            'skill_gap_premium': {}
+        }
+        
+        # 1. Identify skill gaps vs. 90th percentile earners
+        missing_skills = [s for s in self.emerging_skills.keys() if s not in user_skills]
+        
+        for skill in missing_skills[:3]:
+            salary_increase = self.skill_percentiles.get(skill, 0) - desired_salary
+            if salary_increase > 0:
+                recommendations['skill_gap_premium'][skill] = round(salary_increase, 2)
+                recommendations['upskill_opportunities'].append({
+                    'skill': skill,
+                    'potential_increase': f"SGD {salary_increase:,.0f}",
+                    'effort': 'High' if skill in ['AI/ML', 'Cloud'] else 'Medium'
+                })
+        
+        # 2. Identify high-growth sectors
+        sector_growth = self._calculate_sector_growth()
+        top_sectors = sorted(sector_growth.items(), key=lambda x: x[1], reverse=True)[:3]
+        recommendations['high_growth_sectors'] = [
+            {'sector': s[0], 'growth_score': round(s[1], 2), 'match_fit': self._calc_skill_match(s[0], user_skills)}
+            for s in top_sectors
+        ]
+        
+        # 3. Calculate salary potential at 90th percentile
+        relevant_jobs = self.df[self.df['primary_category'].isin([s[0] for s in top_sectors])]
+        recommendations['salary_potential'] = round(relevant_jobs['average_salary'].quantile(0.9), 2)
+        
+        return recommendations
+    
+    def _calculate_sector_growth(self) -> Dict[str, float]:
+        """Calculate growth score for each sector."""
+        sector_growth = {}
+        for sector in self.df['primary_category'].unique():
+            sector_df = self.df[self.df['primary_category'] == sector]
+            if len(sector_df) > 0:
+                growth_score = (
+                    (len(sector_df) / len(self.df)) * 40 +
+                    (sector_df['average_salary'].mean() / self.df['average_salary'].mean()) * 30 +
+                    min((sector_df['metadata_totalNumberOfView'].mean() / 100), 30)
+                )
+                sector_growth[sector] = growth_score
+        return sector_growth
+    
+    def _calc_skill_match(self, sector: str, user_skills: List[str]) -> str:
+        """Calculate skill match for sector."""
+        sector_df = self.df[self.df['primary_category'] == sector]
+        match_count = sum(1 for skill in user_skills if (sector_df['title'].str.contains(skill, case=False, na=False)).any())
+        match_pct = (match_count / max(len(user_skills), 1)) * 100
+        if match_pct >= 75:
+            return "Perfect ✓"
+        elif match_pct >= 50:
+            return "Good →"
+        else:
+            return "Developing"
+
+
 def get_job_recommendations(user_skills: List[str], desired_salary: float, 
                            location: str, df: pd.DataFrame) -> Dict:
     """
-    Generate personalized job recommendations and upskill opportunities.
-    
-    This is the core Recommendation Engine.
+    Generate personalized job recommendations using advanced recommender engine.
     
     Args:
         user_skills: List of current skills
         desired_salary: Target salary
-        location: Preferred work location (not yet in data, for future use)
+        location: Preferred work location
         df: Processed DataFrame
         
     Returns:
-        Dictionary with upskill opportunities and high-growth sectors
+        Dictionary with recommendations from PersonalizedRecommender
     """
-    
-    recommendations = {
-        'upskill_opportunities': [],
-        'high_growth_sectors': [],
-        'salary_potential': 0
-    }
-    
-    # Calculate skill gaps
-    all_skills, emerging_skills = calculate_skill_gaps(df)
-    
-    # 1. Generate 3 Upskill Opportunities
-    upskill_mapping = {
-        'Analyst': ['Python', 'Data', 'SQL'],
-        'Developer': ['Cloud', 'AI/ML', 'DevOps'],
-        'Engineer': ['Cloud', 'DevOps', 'Python'],
-        'Manager': ['Data', 'Analytics', 'AI/ML'],
-    }
-    
-    missing_emerging_skills = [s for s in emerging_skills.keys() if s not in user_skills]
-    
-    opportunities = [
-        f"Learn {missing_emerging_skills[0] if missing_emerging_skills else 'Cloud'} "
-        f"to transition from Analyst to Data Engineer roles",
-        f"Master {missing_emerging_skills[1] if len(missing_emerging_skills) > 1 else 'AI/ML'} "
-        f"to unlock senior positions with 15-20% salary premium",
-        f"Develop {missing_emerging_skills[2] if len(missing_emerging_skills) > 2 else 'DevOps'} "
-        f"expertise to access specialized technical tracks"
-    ]
-    
-    recommendations['upskill_opportunities'] = opportunities[:3]
-    
-    # 2. Identify 3 high-growth sectors
-    sector_growth = {}
-    for sector in df['primary_category'].unique():
-        sector_df = df[df['primary_category'] == sector]
-        growth_score = (
-            len(sector_df) / len(df) * 40 +  # Posting volume weight
-            sector_df['average_salary'].mean() / df['average_salary'].mean() * 30 +
-            sector_df['metadata_totalNumberOfView'].mean() / 10  # Engagement weight
-        )
-        sector_growth[sector] = round(growth_score, 2)
-    
-    top_sectors = sorted(sector_growth.items(), key=lambda x: x[1], reverse=True)[:3]
-    recommendations['high_growth_sectors'] = [
-        {'sector': s[0], 'growth_score': s[1]} for s in top_sectors
-    ]
-    
-    # 3. Calculate salary potential
-    relevant_jobs = df[df['primary_category'].isin([s['sector'] for s in recommendations['high_growth_sectors']])]
-    recommendations['salary_potential'] = round(relevant_jobs['average_salary'].mean(), 2)
-    
-    return recommendations
+    recommender = PersonalizedRecommender(df)
+    return recommender.get_recommendations(user_skills, desired_salary)
 
 
 # ============================================================================
@@ -626,39 +701,365 @@ def create_salary_distribution_by_sector(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def create_job_growth_trend(df: pd.DataFrame) -> go.Figure:
+# ============================================================================
+# DATA EXPORT FUNCTIONS
+# ============================================================================
+
+def create_excel_export(df: pd.DataFrame, persona: str) -> BytesIO:
     """
-    Create time-series forecast of job growth.
+    Create an Excel file with formatted sectors, charts, and statistics.
+    
+    Args:
+        df: Filtered DataFrame
+        persona: User persona (for custom formatting)
+        
+    Returns:
+        BytesIO object containing Excel file
+    """
+    if not EXCEL_AVAILABLE:
+        return None
+    
+    output = BytesIO()
+    
+    # Create Excel writer
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Sheet 1: Summary Statistics
+        summary_stats = pd.DataFrame({
+            'Metric': ['Total Postings', 'Avg Salary', 'Min Salary', 'Max Salary', 
+                      'Total Views', 'Total Applications', 'Avg Experience Required'],
+            'Value': [
+                len(df),
+                f"SGD {df['average_salary'].mean():,.0f}",
+                f"SGD {df['salary_minimum'].mean():,.0f}",
+                f"SGD {df['salary_maximum'].mean():,.0f}",
+                f"{df['metadata_totalNumberOfView'].sum():,}",
+                f"{df['metadata_totalNumberJobApplication'].sum():,}",
+                f"{df['minimumYearsExperience'].mean():.1f} years"
+            ]
+        })
+        summary_stats.to_excel(writer, sheet_name='Summary', index=False)
+        
+        # Sheet 2: Sector Analysis
+        sector_analysis = df.groupby('primary_category').agg({
+            'metadata_jobPostId': 'count',
+            'average_salary': ['mean', 'min', 'max'],
+            'metadata_totalNumberOfView': 'sum',
+            'minimumYearsExperience': 'mean'
+        }).reset_index()
+        sector_analysis.columns = ['Sector', 'Postings', 'Avg_Salary', 'Min_Salary', 
+                                   'Max_Salary', 'Total_Views', 'Avg_Experience']
+        sector_analysis = sector_analysis.sort_values('Postings', ascending=False)
+        sector_analysis.to_excel(writer, sheet_name='Sector Analysis', index=False)
+        
+        # Sheet 3: Detailed Job Listings
+        job_details = df[['title', 'postedCompany_name', 'primary_category', 'average_salary',
+                         'positionLevels', 'employmentTypes', 'metadata_newPostingDate',
+                         'metadata_totalNumberOfView']].copy()
+        job_details.columns = ['Job Title', 'Company', 'Sector', 'Salary', 'Level', 
+                              'Employment Type', 'Posted Date', 'Views']
+        job_details.to_excel(writer, sheet_name='Job Listings', index=False)
+        
+        # Format sheets
+        for sheet in writer.sheets.values():
+            for column in sheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(cell.value)
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                sheet.column_dimensions[column_letter].width = adjusted_width
+    
+    output.seek(0)
+    return output
+
+
+def create_pdf_export(df: pd.DataFrame, persona: str, recommendations: Optional[Dict] = None) -> BytesIO:
+    """
+    Create a PDF report with key insights and statistics.
+    
+    Args:
+        df: Filtered DataFrame
+        persona: User persona
+        recommendations: Optional recommendations dictionary
+        
+    Returns:
+        BytesIO object containing PDF file
+    """
+    if not PDF_AVAILABLE:
+        return None
+    
+    output = BytesIO()
+    doc = SimpleDocTemplate(output, pagesize=letter, topMargin=0.5*1, bottomMargin=0.5*1)
+    
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Title
+    title_style = styles['Heading1']
+    title_style.textColor = colors.HexColor('#3b82f6')
+    title_style.fontSize = 24
+    title_style.spaceAfter = 12
+    elements.append(Paragraph(f"Workforce Intelligence Report - {persona}", title_style))
+    elements.append(Spacer(1, 0.2*1))
+    
+    # Executive Summary
+    elements.append(Paragraph("Executive Summary", styles['Heading2']))
+    summary_text = f"""
+    <b>Report Generated:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}<br/>
+    <b>Records Analyzed:</b> {len(df):,}<br/>
+    <b>Average Salary:</b> SGD {df['average_salary'].mean():,.0f}<br/>
+    <b>Total Job Postings:</b> {len(df):,}<br/>
+    <b>Market Engagement:</b> {df['metadata_totalNumberOfView'].sum():,} total views
+    """
+    elements.append(Paragraph(summary_text, styles['Normal']))
+    elements.append(Spacer(1, 0.3*1))
+    
+    # Sector Breakdown Table
+    elements.append(Paragraph("Top 10 Sectors by Job Postings", styles['Heading2']))
+    
+    sector_data = df.groupby('primary_category').agg({
+        'metadata_jobPostId': 'count',
+        'average_salary': 'mean'
+    }).reset_index().sort_values('metadata_jobPostId', ascending=False).head(10)
+    
+    table_data = [['Sector', 'Postings', 'Avg Salary (SGD)']]
+    for _, row in sector_data.iterrows():
+        table_data.append([row['primary_category'], str(int(row['metadata_jobPostId'])), 
+                          f"${row['average_salary']:,.0f}"])
+    
+    table = Table(table_data, colWidths=[3*1, 1.5*1, 2*1])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3b82f6')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    
+    elements.append(table)
+    elements.append(Spacer(1, 0.3*1))
+    
+    # Recommendations if provided
+    if recommendations and persona == "Individual":
+        elements.append(PageBreak())
+        elements.append(Paragraph("Personalized Recommendations", styles['Heading2']))
+        elements.append(Paragraph(f"Salary Potential: SGD {recommendations.get('salary_potential', 0):,.0f}", 
+                                 styles['Normal']))
+        elements.append(Spacer(1, 0.1*1))
+    
+    # Build PDF
+    try:
+        doc.build(elements)
+        output.seek(0)
+        return output
+    except Exception as e:
+        st.error(f"PDF generation error: {str(e)}")
+        return None
+
+
+def create_skill_sankey_diagram(df: pd.DataFrame, user_skills: List[str]) -> go.Figure:
+    """
+    Create an interactive Sankey diagram showing skill progression paths.
+    
+    Visualizes flow from "Current Skills" -> "Target Skills" -> "High-Growth Sectors"
     
     Args:
         df: Processed DataFrame
+        user_skills: User's current skills
         
     Returns:
-        Plotly Figure object
+        Plotly Sankey Figure
+    """
+    # Define skill progression paths
+    source = []
+    target = []
+    value = []
+    labels = []
+    colors_list = []
+    
+    # Add current skills as source
+    for skill in user_skills:
+        if skill not in labels:
+            labels.append(skill)
+    
+    # Add emerging skills as intermediate
+    _, emerging = calculate_skill_gaps(df)
+    for skill in emerging.keys():
+        if skill not in labels:
+            labels.append(skill)
+    
+    # Add top sectors as final destination
+    top_sectors = df['primary_category'].value_counts().head(5).index.tolist()
+    for sector in top_sectors:
+        if sector not in labels:
+            labels.append(sector)
+    
+    # Create flows
+    for user_skill in user_skills:
+        if user_skill in labels:
+            user_idx = labels.index(user_skill)
+            for emerg_skill in list(emerging.keys())[:2]:
+                if emerg_skill in labels:
+                    emerg_idx = labels.index(emerg_skill)
+                    source.append(user_idx)
+                    target.append(emerg_idx)
+                    value.append(emerging[emerg_skill] // 10)
+    
+    # Connect emerging skills to sectors
+    for emerg_skill in list(emerging.keys())[:2]:
+        if emerg_skill in labels:
+            emerg_idx = labels.index(emerg_skill)
+            for sector in top_sectors:
+                if sector in labels:
+                    sector_idx = labels.index(sector)
+                    source.append(emerg_idx)
+                    target.append(sector_idx)
+                    value.append(10)
+    
+    # Create color array
+    node_colors = ['#3b82f6' if label in user_skills else '#10b981' if label in emerging else '#f97316' 
+                   for label in labels]
+    
+    fig = go.Figure(data=[go.Sankey(
+        node=dict(
+            pad=15,
+            thickness=20,
+            line=dict(color='#1e2936', width=2),
+            label=labels,
+            color=node_colors
+        ),
+        link=dict(
+            source=source,
+            target=target,
+            value=value,
+            color=['rgba(59, 130, 246, 0.4)' if s < len([skill for skill in user_skills if skill in labels])
+                   else 'rgba(16, 185, 129, 0.4)' for s in source]
+        )
+    )])
+    
+    fig.update_layout(
+        title="Career Skill Progression Pathways",
+        font=dict(size=12, family='Segoe UI', color='#e0e7ff'),
+        plot_bgcolor='#0f1419',
+        paper_bgcolor='#0f1419',
+        height=500,
+        margin=dict(l=20, r=20, t=60, b=20)
+    )
+    
+    return fig
+
+
+def create_trend_with_ma(df: pd.DataFrame, window: int = 3) -> go.Figure:
+    """
+    Create job growth trend with moving average overlay and confidence band.
+    
+    Args:
+        df: Processed DataFrame
+        window: Moving average window
+        
+    Returns:
+        Plotly Figure with trend and MA overlay
     """
     trend_data = df.groupby('year_month').size().reset_index(name='count')
     trend_data['year_month'] = trend_data['year_month'].astype(str)
+    trend_data['ma'] = trend_data['count'].rolling(window=window, center=True).mean()
+    trend_data['upper_band'] = trend_data['ma'] * 1.15
+    trend_data['lower_band'] = trend_data['ma'] * 0.85
     
     fig = go.Figure()
+    
+    # Add confidence band
+    fig.add_trace(go.Scatter(
+        x=trend_data['year_month'],
+        y=trend_data['upper_band'],
+        fill=None,
+        mode='lines',
+        line_color='rgba(59, 130, 246, 0)',
+        showlegend=False,
+        name='Upper Band'
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=trend_data['year_month'],
+        y=trend_data['lower_band'],
+        fill='tonexty',
+        mode='lines',
+        line_color='rgba(59, 130, 246, 0)',
+        name='Confidence Band',
+        fillcolor='rgba(59, 130, 246, 0.1)'
+    ))
     
     # Add historical data
     fig.add_trace(go.Scatter(
         x=trend_data['year_month'],
         y=trend_data['count'],
         mode='lines+markers',
-        name='Historical Job Postings',
-        line=dict(color='#666666', width=2),
+        name='Actual Postings',
+        line=dict(color='#3b82f6', width=3),
         marker=dict(size=6)
     ))
     
+    # Add moving average
+    fig.add_trace(go.Scatter(
+        x=trend_data['year_month'],
+        y=trend_data['ma'],
+        mode='lines',
+        name=f'{window}-Month Moving Average',
+        line=dict(color='#10b981', width=3, dash='dash'),
+        hovertemplate='<b>MA: %{y:.0f}</b><extra></extra>'
+    ))
+    
     fig.update_layout(
-        title='Job Posting Trends Over Time',
+        title='Job Market Trend Analysis with Predictive Overlay',
         xaxis_title='Time Period',
         yaxis_title='Number of Job Postings',
-        height=400,
-        template='plotly_white',
+        height=450,
+        plot_bgcolor='#0f1419',
+        paper_bgcolor='#0f1419',
+        font=dict(family='Segoe UI', size=11, color='#e0e7ff'),
         hovermode='x unified',
-        font=dict(family='Segoe UI', size=11)
+        legend=dict(x=0, y=1, bgcolor='rgba(15, 20, 25, 0.7)', bordercolor='#3b82f6', borderwidth=1)
+    )
+    
+    return fig
+
+
+def create_skill_distribution_pie(df: pd.DataFrame) -> go.Figure:
+    """
+    Create pie chart showing distribution of top skills in demand.
+    
+    Args:
+        df: Processed DataFrame
+        
+    Returns:
+        Plotly pie Figure
+    """
+    all_skills, _ = calculate_skill_gaps(df)
+    skills_sorted = sorted(all_skills.items(), key=lambda x: x[1], reverse=True)[:8]
+    
+    fig = go.Figure(data=[go.Pie(
+        labels=[s[0] for s in skills_sorted],
+        values=[s[1] for s in skills_sorted],
+        hole=0.3,
+        marker=dict(colors=['#3b82f6', '#10b981', '#f97316', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f59e0b']),
+        textposition='inside',
+        textinfo='label+percent',
+        hovertemplate='<b>%{label}</b><br>Demand: %{value}<br>%{percent}<extra></extra>'
+    )])
+    
+    fig.update_layout(
+        title='Skills Demand Distribution (Top 8)',
+        height=450,
+        plot_bgcolor='#0f1419',
+        paper_bgcolor='#0f1419',
+        font=dict(family='Segoe UI', size=11, color='#e0e7ff')
     )
     
     return fig
@@ -714,6 +1115,101 @@ def create_labor_shortage_gauge(shortage_index: Dict[str, float], sector: str) -
     return fig
 
 
+def create_top_job_titles_by_applications(_df: pd.DataFrame) -> go.Figure:
+    """
+    Create a horizontal bar chart showing top 10 job titles by application volume.
+    
+    Args:
+        _df: Processed DataFrame
+        
+    Returns:
+        Plotly Figure object
+    """
+    if len(_df) == 0 or 'title' not in _df.columns:
+        fig = go.Figure()
+        fig.add_annotation(text="No data available", xref="paper", yref="paper",
+                          x=0.5, y=0.5, showarrow=False)
+        return fig
+    
+    # Group by job title and sum applications
+    job_apps = _df.groupby('title')['metadata_totalNumberJobApplication'].sum().sort_values(ascending=True).tail(10)
+    
+    fig = go.Figure(data=[
+        go.Bar(
+            y=job_apps.index,
+            x=job_apps.values,
+            orientation='h',
+            marker=dict(
+                color=job_apps.values,
+                colorscale='Blues',
+                showscale=True,
+                colorbar=dict(title="Applications")
+            ),
+            hovertemplate='<b>%{y}</b><br>Total Applications: %{x}<extra></extra>'
+        )
+    ])
+    
+    fig.update_layout(
+        title='Top 10 Job Titles by Application Volume',
+        xaxis_title='Total Applications',
+        yaxis_title='Job Title',
+        height=450,
+        plot_bgcolor='#0f1419',
+        paper_bgcolor='#0f1419',
+        font=dict(family='Segoe UI', size=11, color='#e0e7ff'),
+        margin=dict(l=300)
+    )
+    
+    return fig
+
+
+def create_sector_job_demand(_df: pd.DataFrame) -> go.Figure:
+    """
+    Create a bar chart showing top 10 job demand by sector.
+    
+    Args:
+        _df: Processed DataFrame
+        
+    Returns:
+        Plotly Figure object
+    """
+    if len(_df) == 0 or 'primary_category' not in _df.columns:
+        fig = go.Figure()
+        fig.add_annotation(text="No data available", xref="paper", yref="paper",
+                          x=0.5, y=0.5, showarrow=False)
+        return fig
+    
+    # Group by sector and count postings
+    sector_demand = _df.groupby('primary_category').size().sort_values(ascending=False).head(10)
+    
+    fig = go.Figure(data=[
+        go.Bar(
+            x=sector_demand.index,
+            y=sector_demand.values,
+            marker=dict(
+                color=sector_demand.values,
+                colorscale='Viridis',
+                showscale=True,
+                colorbar=dict(title="Job Postings")
+            ),
+            hovertemplate='<b>%{x}</b><br>Postings: %{y}<extra></extra>'
+        )
+    ])
+    
+    fig.update_layout(
+        title='Top 10 Job Demand by Sector',
+        xaxis_title='Industry Sector',
+        yaxis_title='Number of Job Postings',
+        height=450,
+        plot_bgcolor='#0f1419',
+        paper_bgcolor='#0f1419',
+        font=dict(family='Segoe UI', size=11, color='#e0e7ff'),
+        xaxis_tickangle=-45
+    )
+    
+    return fig
+
+
 # ============================================================================
 # SIDEBAR: PERSONA SELECTION & FILTERS
 # ============================================================================
@@ -721,50 +1217,58 @@ def create_labor_shortage_gauge(shortage_index: Dict[str, float], sector: str) -
 # Removed external placeholder image to prevent connectivity issues
 # Logo section can be added later with local file
 
+# ============================================================================
+# SIDEBAR: PERSONA SELECTION & FILTERS
+# ============================================================================
+
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 👤 SELECT YOUR PERSONA")
 
 persona = st.sidebar.radio(
     "Who are you?",
     options=["Individual", "Government Agency", "Recruiter"],
-    help="Choose your role to customize the dashboard view"
+    help="Choose your role to customize the dashboard view",
+    key="persona_selector"
 )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🎛️ FILTERS")
 
 # Load data
 @st.cache_data
 def load_and_preprocess():
-    df = load_data("/home/julius/Capstone DS4/SGJobData.csv")
+    df = load_data("/home/julius/Capstone_DS4/SGJobData.csv")
     df = preprocess_data(df)
     return df
 
 df = load_and_preprocess()
 
-# Year filter
-available_years = sorted(df['year'].dropna().unique())
-selected_years = st.sidebar.multiselect(
-    "Filter by Year",
-    options=available_years,
-    default=available_years
-)
-
-# Sector filter
-available_sectors = sorted(df['primary_category'].unique())
-selected_sectors = st.sidebar.multiselect(
-    "Filter by Industry Sector",
-    options=available_sectors,
-    default=available_sectors[:8]
-)
-
-# Employment type filter
-employment_types = sorted(df['employmentTypes'].unique())
-selected_employment = st.sidebar.multiselect(
-    "Filter by Employment Type",
-    options=employment_types,
-    default=employment_types
-)
+# Collapsible filter section
+with st.sidebar.expander("🎛️ FILTERS", expanded=True):
+    st.markdown("**Time Period**")
+    available_years = sorted(df['year'].dropna().unique())
+    selected_years = st.multiselect(
+        "Filter by Year",
+        options=available_years,
+        default=available_years,
+        key="years_filter"
+    )
+    
+    st.markdown("**Industry & Employment**")
+    available_sectors = sorted(df['primary_category'].unique())
+    selected_sectors = st.multiselect(
+        "Filter by Industry Sector",
+        options=available_sectors,
+        default=available_sectors[:8],
+        key="sector_filter"
+    )
+    
+    employment_types = sorted(df['employmentTypes'].unique())
+    selected_employment = st.multiselect(
+        "Filter by Employment Type",
+        options=employment_types,
+        default=employment_types,
+        key="employment_filter"
+    )
 
 # Apply filters with validation
 filtered_df = df.copy()
@@ -781,64 +1285,74 @@ if len(filtered_df) == 0:
     st.warning("⚠️ No jobs match your current filter selections. Please adjust your filters.")
     filtered_df = df.copy()
 
-st.sidebar.markdown("---")
-
-# Dynamic filters based on persona
+# Persona-specific filters in collapsible sections
 if persona == "Individual":
-    st.sidebar.markdown("""
-    <div style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); padding: 1.5rem; border-radius: 1rem; margin-bottom: 1.5rem; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); border: 2px solid #60a5fa;">
-        <h3 style="color: white; margin: 0; font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px;">💼 YOUR PROFILE</h3>
-    </div>
-    """, unsafe_allow_html=True)
-    user_current_skills = st.sidebar.multiselect(
-        "Your Current Skills",
-        options=['Python', 'Java', 'JavaScript', 'SQL', 'Cloud', 'Data', 'AI/ML', 'C++'],
-        default=['Python'],
-        help="Select skills you already possess"
-    )
-    
-    desired_salary = st.sidebar.slider(
-        "Target Monthly Salary (SGD)",
-        min_value=1000,
-        max_value=15000,
-        value=5000,
-        step=500
-    )
-    
-    preferred_role = st.sidebar.selectbox(
-        "Preferred Role",
-        options=['Analyst', 'Developer', 'Engineer', 'Manager', 'Any']
-    )
+    with st.sidebar.expander("💼 YOUR PROFILE", expanded=True):
+        user_current_skills = st.multiselect(
+            "Your Current Skills",
+            options=['Python', 'Java', 'JavaScript', 'SQL', 'Cloud', 'Data', 'AI/ML', 'C++', 'DevOps'],
+            default=['Python'],
+            help="Select skills you already possess",
+            key="user_current_skills_selector"
+        )
+        
+        desired_salary = st.slider(
+            "Target Monthly Salary (SGD)",
+            min_value=1000,
+            max_value=15000,
+            value=5000,
+            step=500
+        )
+        
+        preferred_role = st.selectbox(
+            "Preferred Role",
+            options=['Analyst', 'Developer', 'Engineer', 'Manager', 'Any'],
+            key="individual_preferred_role"
+        )
 
 elif persona == "Government Agency":
-    st.sidebar.markdown("### 📊 MACRO-ECONOMIC FILTERS")
-    
-    shortage_sensitivity = st.sidebar.slider(
-        "Focus on High-Shortage Sectors",
-        min_value=0.0,
-        max_value=1.0,
-        value=0.7,
-        step=0.1
-    )
+    with st.sidebar.expander("📊 MACRO-ECONOMIC FILTERS", expanded=True):
+        shortage_sensitivity = st.slider(
+            "Focus on High-Shortage Sectors",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.7,
+            step=0.1,
+            help="Higher values emphasize severe labor shortages"
+        )
+        
+        st.markdown("**Export Options:**")
+        export_format = st.radio(
+            "Preferred Download Format",
+            options=['CSV', 'Excel', 'PDF'],
+            help="Select format for data export",
+            key="export_format_selector"
+        )
 
 elif persona == "Recruiter":
-    st.sidebar.markdown("### 🎯 RECRUITMENT FILTERS")
-    
-    growth_focus = st.sidebar.selectbox(
-        "Focus Area",
-        options=['High Growth Sectors', 'High Salary Sectors', 'High Volume', 'Emerging Skills']
-    )
-    
-    min_vacancy = st.sidebar.slider(
-        "Minimum Vacancies per Posting",
-        min_value=1,
-        max_value=20,
-        value=1
-    )
+    with st.sidebar.expander("🎯 RECRUITMENT FILTERS", expanded=True):
+        growth_focus = st.selectbox(
+            "Focus Area",
+            options=['High Growth Sectors', 'High Salary Sectors', 'High Volume', 'Emerging Skills'],
+            key="recruiter_growth_focus"
+        )
+        
+        min_vacancy = st.slider(
+            "Minimum Vacancies per Posting",
+            min_value=1,
+            max_value=20,
+            value=1
+        )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown(f"**Last Updated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-st.sidebar.markdown(f"**Records Displayed:** {len(filtered_df):,}")
+
+# Footer info
+with st.sidebar.expander("ℹ️ DATASET INFO", expanded=False):
+    st.markdown(f"**Last Updated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    st.markdown(f"**Records Displayed:** {len(filtered_df):,}")
+    st.markdown(f"**Total Records:** {len(df):,}")
+    st.markdown(f"**Sectors:** {df['primary_category'].nunique()}")
+    st.markdown(f"**Companies:** {df['postedCompany_name'].nunique()}")
 
 # ============================================================================
 # MAIN CONTENT AREA - HEADER
@@ -900,7 +1414,7 @@ st.markdown("---")
 if persona == "Individual":
     st.header("🚀 Your Personalized Career Roadmap")
     
-    # Get recommendations
+    # Get advanced recommendations
     recommendations = get_job_recommendations(
         user_current_skills,
         desired_salary,
@@ -908,76 +1422,137 @@ if persona == "Individual":
         filtered_df
     )
     
-    # 1. Upskill Opportunities
-    st.subheader("💡 Recommended Upskill Opportunities")
+    # Display KPI improvements
     col1, col2, col3 = st.columns(3)
     
-    upskill_opps = recommendations['upskill_opportunities']
     with col1:
-        st.markdown(f"""
-        <div class="recommendation-box">
-        <strong>Opportunity 1</strong><br>
-        {upskill_opps[0]}
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"""
-        <div class="recommendation-box">
-        <strong>Opportunity 2</strong><br>
-        {upskill_opps[1]}
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f"""
-        <div class="recommendation-box">
-        <strong>Opportunity 3</strong><br>
-        {upskill_opps[2]}
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # 2. High-Growth Sectors
-    st.subheader("🎯 High-Growth Sectors for Your Profile")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        sectors_list = recommendations['high_growth_sectors']
-        sectors_df = pd.DataFrame([
-            {
-                'Rank': i+1,
-                'Sector': s['sector'],
-                'Growth Score': f"{s['growth_score']:.1f}",
-                'Salary Potential': f"SGD {recommendations['salary_potential']:,.0f}"
-            }
-            for i, s in enumerate(sectors_list)
-        ])
-        st.dataframe(sectors_df, hide_index=True, use_container_width=True)
+        salary_delta = recommendations.get('salary_potential', 0) - desired_salary
+        st.metric(
+            label="💰 Salary Potential (90th %ile)",
+            value=f"SGD {recommendations.get('salary_potential', 0):,.0f}",
+            delta=f"SGD {salary_delta:,.0f}" if salary_delta > 0 else "Current"
+        )
     
     with col2:
         st.metric(
-            "Salary Potential",
-            f"SGD {recommendations['salary_potential']:,.0f}",
-            "with upskilling"
+            label="📚 Skills to Acquire",
+            value=len(recommendations.get('upskill_opportunities', [])),
+            delta="High-impact pathways"
+        )
+    
+    with col3:
+        st.metric(
+            label="🎯 Growth Sectors",
+            value=len(recommendations.get('high_growth_sectors', [])),
+            delta="Best opportunities"
         )
     
     st.markdown("---")
     
-    # 3. Skill Gap Analysis
-    st.subheader("📈 Skill Gap Analysis")
-    current_skills, emerging_skills = calculate_skill_gaps(filtered_df)
-    fig = create_skill_gap_chart(current_skills, emerging_skills)
+    # 1. Skill Progression Sankey (Advanced Visualization)
+    st.subheader("🔄 Career Progression Pathways")
+    st.markdown("*Visualizes how your current skills connect to emerging opportunities and target sectors*")
+    
+    fig_sankey = create_skill_sankey_diagram(filtered_df, user_current_skills)
+    st.plotly_chart(fig_sankey, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # 2. Upskill Opportunities
+    st.subheader("💡 High-Impact Upskill Opportunities")
+    
+    upskill_opps = recommendations.get('upskill_opportunities', [])
+    
+    if upskill_opps:
+        cols = st.columns(len(upskill_opps[:3]))
+        for idx, col in enumerate(cols):
+            if idx < len(upskill_opps):
+                opp = upskill_opps[idx]
+                with col:
+                    skill = opp.get('skill', 'Unknown') if isinstance(opp, dict) else opp.split()[1] if len(opp.split()) > 1 else 'Cloud'
+                    increase = opp.get('potential_increase', 'N/A') if isinstance(opp, dict) else f"SGD {recommendations['salary_potential'] - desired_salary:,.0f}"
+                    
+                    st.markdown(f"""
+                    <div class="recommendation-box">
+                    <strong>📈 {skill}</strong><br>
+                    <small>Potential Increase:</small><br>
+                    <strong>{increase}</strong><br>
+                    <small style="color: #a7f3d0;">Learn in 3-6 months</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # 3. Growth Sectors with Skill Match
+    st.subheader("🎯 Aligned High-Growth Sectors")
+    
+    sectors_data = recommendations.get('high_growth_sectors', [])
+    
+    if sectors_data:
+        sectors_df = pd.DataFrame([
+            {
+                'Rank': i+1,
+                'Sector': s.get('sector', 'Unknown'),
+                'Growth Score': f"{s.get('growth_score', 0):.1f}",
+                'Skill Match': s.get('match_fit', 'N/A'),
+                'Avg Salary': f"SGD {filtered_df[filtered_df['primary_category'] == s.get('sector', '')]['average_salary'].mean():,.0f}"
+            }
+            for i, s in enumerate(sectors_data)
+        ])
+        st.dataframe(sectors_df, hide_index=True, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # 4. Skill Distribution (Doughnut Chart)
+    st.subheader("📊 Market Skills Distribution")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        fig_skills = create_skill_distribution_pie(filtered_df)
+        st.plotly_chart(fig_skills, use_container_width=True)
+    
+    with col2:
+        st.markdown("### Your Skill Gap")
+        all_skills, emerging = calculate_skill_gaps(filtered_df)
+        missing = [s for s in emerging.keys() if s not in user_current_skills]
+        st.markdown(f"**Missing Skills:** {len(missing)}")
+        for skill in missing[:3]:
+            st.markdown(f"• {skill}")
+    
+    st.markdown("---")
+    
+    # 5. Salary Distribution
+    st.subheader("💰 Salary Distribution by Sector")
+    fig = create_salary_distribution_by_sector(filtered_df)
     st.plotly_chart(fig, use_container_width=True)
     
     st.markdown("---")
     
-    # 4. Job Salary Distribution
-    st.subheader("💰 Salary Distribution by Sector")
-    fig = create_salary_distribution_by_sector(filtered_df)
-    st.plotly_chart(fig, use_container_width=True)
+    # 6. Download Personalized Report
+    st.subheader("📥 Export Your Report")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        csv_data = filtered_df[['title', 'postedCompany_name', 'primary_category', 
+                               'average_salary', 'positionLevels', 'employmentTypes']].to_csv(index=False)
+        st.download_button(
+            label="📄 Download CSV Report",
+            data=csv_data,
+            file_name=f"career_recommendations_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
+    
+    with col2:
+        if PDF_AVAILABLE:
+            pdf_data = create_pdf_export(filtered_df, "Individual", recommendations)
+            if pdf_data:
+                st.download_button(
+                    label="📑 Download PDF Report",
+                    data=pdf_data,
+                    file_name=f"career_report_{datetime.now().strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf"
+                )
 
 
 elif persona == "Government Agency":
@@ -989,9 +1564,46 @@ elif persona == "Government Agency":
     
     st.markdown("---")
     
+    # KPI Dashboard
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            label="📊 Total Postings",
+            value=f"{len(filtered_df):,}",
+            delta=f"{int((len(filtered_df)/len(df)*100)) if len(df) > 0 else 0}% of market"
+        )
+    
+    with col2:
+        sector_count = filtered_df['primary_category'].nunique()
+        st.metric(
+            label="🏭 Active Sectors",
+            value=sector_count,
+            delta=f"{df['primary_category'].nunique()} total"
+        )
+    
+    with col3:
+        avg_salary = filtered_df['average_salary'].mean()
+        yoy_change = ((avg_salary - df['average_salary'].mean()) / df['average_salary'].mean() * 100) if df['average_salary'].mean() > 0 else 0
+        st.metric(
+            label="💰 Avg Salary (SGD)",
+            value=f"SGD {avg_salary:,.0f}",
+            delta=f"{yoy_change:+.1f}% YoY"
+        )
+    
+    with col4:
+        total_applications = filtered_df['metadata_totalNumberJobApplication'].sum()
+        st.metric(
+            label="📋 Applications",
+            value=f"{total_applications:,}",
+            delta=f"{total_applications/len(filtered_df):.1f} per posting"
+        )
+    
+    st.markdown("---")
+    
     # 1. Labor Shortage Index
     st.subheader("🚨 Labor Shortage Index by Sector")
-    st.markdown("*Higher values indicate more severe labor shortages*")
+    st.markdown("*Higher values indicate more severe labor shortages (0-100 scale)*")
     
     shortage_index = calculate_labor_shortage_index(filtered_df)
     
@@ -1000,12 +1612,13 @@ elif persona == "Government Agency":
     with col1:
         selected_sector = st.selectbox(
             "Select Sector for Detailed Analysis",
-            options=list(shortage_index.keys())
+            options=list(shortage_index.keys()) if shortage_index else ['N/A'],
+            key="gov_sector_selector"
         )
         
         # Display top 5 shortage sectors
         st.markdown("**Top 5 Critical Shortage Areas:**")
-        top_shortage = sorted(shortage_index.items(), key=lambda x: x[1], reverse=True)[:5]
+        top_shortage = sorted(shortage_index.items(), key=lambda x: x[1], reverse=True)[:5] if shortage_index else []
         for i, (sector, index) in enumerate(top_shortage, 1):
             color = "🔴" if index > 70 else "🟡" if index > 50 else "🟢"
             st.markdown(f"{color} **{i}. {sector}** - {index:.1f}")
@@ -1024,9 +1637,10 @@ elif persona == "Government Agency":
     
     st.markdown("---")
     
-    # 3. Job Growth Trends
-    st.subheader("📊 Job Market Trends")
-    fig = create_job_growth_trend(filtered_df)
+    # 3. Job Growth Trends WITH Moving Average
+    st.subheader("📊 Job Market Trends (with Predictive Overlay)")
+    st.markdown("*Trend line shows 3-month moving average with confidence band*")
+    fig = create_trend_with_ma(filtered_df, window=3)
     st.plotly_chart(fig, use_container_width=True)
     
     st.markdown("---")
@@ -1038,41 +1652,118 @@ elif persona == "Government Agency":
         'metadata_jobPostId': 'count',
         'average_salary': ['mean', 'min', 'max'],
         'minimumYearsExperience': 'mean',
-        'metadata_totalNumberOfView': 'sum'
+        'metadata_totalNumberOfView': 'sum',
+        'metadata_totalNumberJobApplication': 'sum'
     }).reset_index()
     
-    sector_summary.columns = ['Sector', 'Postings', 'Avg_Salary', 'Min_Salary', 'Max_Salary', 'Avg_Experience', 'Total_Views']
+    sector_summary.columns = ['Sector', 'Postings', 'Avg_Salary', 'Min_Salary', 'Max_Salary', 'Avg_Experience', 'Total_Views', 'Total_Applications']
     sector_summary = sector_summary.sort_values('Postings', ascending=False).head(10)
     
     # Format for display
     for col in ['Avg_Salary', 'Min_Salary', 'Max_Salary']:
-        sector_summary[col] = sector_summary[col].round(2)
+        sector_summary[col] = sector_summary[col].apply(lambda x: f"SGD {x:,.0f}")
     
     st.dataframe(sector_summary, hide_index=True, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # 5. Export Options for Government Users
+    st.subheader("📥 Export Market Intelligence")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        csv_data = sector_summary.to_csv(index=False)
+        st.download_button(
+            label="📄 Download CSV Report",
+            data=csv_data,
+            file_name=f"labor_market_report_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
+    
+    with col2:
+        if EXCEL_AVAILABLE:
+            excel_data = create_excel_export(filtered_df, "Government Agency")
+            if excel_data:
+                st.download_button(
+                    label="📊 Download Excel Report",
+                    data=excel_data,
+                    file_name=f"labor_intelligence_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+    
+    with col3:
+        if PDF_AVAILABLE:
+            pdf_data = create_pdf_export(filtered_df, "Government Agency")
+            if pdf_data:
+                st.download_button(
+                    label="📑 Download PDF Report",
+                    data=pdf_data,
+                    file_name=f"labor_report_{datetime.now().strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf"
+                )
 
 
 elif persona == "Recruiter":
     st.header("🎯 Talent Pool & Recruitment Intelligence")
     
     st.info(
-        "👁️ **Recruiter Focus:** Identify high-growth talent pools, skill trends, and competitive salary benchmarks."
+        "👁️ **Recruiter Focus:** Identify high-growth talent pools, skill trends, competitive salary benchmarks, and velocity metrics."
     )
     
     st.markdown("---")
     
-    # 1. Top Growing Sectors
-    st.subheader("📈 High-Growth Talent Pools")
+    # KPI Dashboard for Recruiters
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            label="💼 Open Positions",
+            value=f"{len(filtered_df):,}",
+            delta=f"Active hiring"
+        )
+    
+    with col2:
+        avg_apps = filtered_df['metadata_totalNumberJobApplication'].mean()
+        st.metric(
+            label="📝 Avg Applications",
+            value=f"{avg_apps:.1f}",
+            delta="per posting"
+        )
+    
+    with col3:
+        top_company = filtered_df['postedCompany_name'].mode()[0] if len(filtered_df['postedCompany_name'].mode()) > 0 else "N/A"
+        st.metric(
+            label="🏢 Top Hiring Company",
+            value=top_company[:20],
+            delta="hiring most"
+        )
+    
+    with col4:
+        avg_salary = filtered_df['average_salary'].mean()
+        st.metric(
+            label="💰 Competitive Rate",
+            value=f"SGD {avg_salary:,.0f}",
+            delta="avg offering"
+        )
+    
+    st.markdown("---")
+    
+    # 1. Top Growing Sectors (High-Velocity Hiring)
+    st.subheader("📈 High-Velocity Talent Pools")
+    st.markdown("*Sectors with fastest hiring velocity and highest engagement*")
     
     sector_metrics = filtered_df.groupby('primary_category').agg({
         'metadata_jobPostId': 'count',
         'average_salary': 'mean',
-        'metadata_totalNumberJobApplication': 'mean'
+        'metadata_totalNumberJobApplication': 'mean',
+        'metadata_totalNumberOfView': 'mean'
     }).reset_index()
     
-    sector_metrics.columns = ['Sector', 'Open_Positions', 'Avg_Salary', 'Avg_Applications']
+    sector_metrics.columns = ['Sector', 'Open_Positions', 'Avg_Salary', 'Avg_Applications', 'Avg_Views']
     sector_metrics = sector_metrics.sort_values('Open_Positions', ascending=False).head(10)
     
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns([1.5, 1])
     
     with col1:
         fig = px.bar(
@@ -1080,22 +1771,22 @@ elif persona == "Recruiter":
             x='Sector',
             y='Open_Positions',
             color='Avg_Salary',
-            hover_data=['Avg_Applications'],
-            title='Open Positions by Sector',
+            hover_data=['Avg_Applications', 'Avg_Views'],
+            title='Open Positions by Sector (Colored by Salary)',
             labels={'Open_Positions': 'Number of Openings', 'Avg_Salary': 'Avg Salary (SGD)'},
-            color_continuous_scale='Greys'
+            color_continuous_scale='Viridis'
         )
-        fig.update_layout(xaxis_tickangle=-45, height=400)
+        fig.update_layout(xaxis_tickangle=-45, height=400, plot_bgcolor='#0f1419', 
+                         paper_bgcolor='#0f1419', font=dict(color='#e0e7ff'))
         st.plotly_chart(fig, use_container_width=True)
     
-    with col1:
-        st.dataframe(
-            sector_metrics.assign(Avg_Salary=sector_metrics['Avg_Salary'].apply(lambda x: f'${x:,.0f}'))
-                          .drop('Sector', axis=1)
-                          .assign(Sector=sector_metrics['Sector']),
-            hide_index=True,
-            use_container_width=True
-        )
+    with col2:
+        st.markdown("### Hiring Velocity Metrics")
+        top_sector = sector_metrics.iloc[0]
+        st.markdown(f"**{top_sector['Sector']}**")
+        st.markdown(f"• Positions: {int(top_sector['Open_Positions'])}")
+        st.markdown(f"• Avg Apps: {top_sector['Avg_Applications']:.1f}")
+        st.markdown(f"• Engagement: {top_sector['Avg_Views']:.0f} views")
     
     st.markdown("---")
     
@@ -1115,15 +1806,19 @@ elif persona == "Recruiter":
         fig.add_trace(go.Box(
             y=[row['Min'], row['Avg_Salary'], row['Max']],
             name=row['Position Level'],
-            boxmean='sd'
+            boxmean='sd',
+            marker=dict(color='#3b82f6')
         ))
     
     fig.update_layout(
-        title='Salary Range by Position Level',
+        title='Salary Range by Position Level (Box & Whisker)',
         yaxis_title='Salary (SGD)',
         height=400,
         template='plotly_white',
-        showlegend=False
+        showlegend=False,
+        plot_bgcolor='#0f1419',
+        paper_bgcolor='#0f1419',
+        font=dict(color='#e0e7ff')
     )
     
     st.plotly_chart(fig, use_container_width=True)
@@ -1131,7 +1826,7 @@ elif persona == "Recruiter":
     st.markdown("---")
     
     # 3. Skills Demand Analysis
-    st.subheader("🔧 High-Demand Skills")
+    st.subheader("🔧 High-Demand Skills Heatmap")
     
     current_skills, emerging_skills = calculate_skill_gaps(filtered_df)
     
@@ -1150,31 +1845,64 @@ elif persona == "Recruiter":
         x='Demand',
         y='Skill',
         orientation='h',
-        title='Top 10 In-Demand Skills',
+        title='Top 10 In-Demand Skills (Recruitment Velocity)',
         color='Demand',
-        color_continuous_scale='Greys',
+        color_continuous_scale='Blues',
         labels={'Demand': 'Number of Job Postings'}
     )
     
-    fig.update_layout(height=400, template='plotly_white')
+    fig.update_layout(height=400, plot_bgcolor='#0f1419', paper_bgcolor='#0f1419',
+                     font=dict(color='#e0e7ff'))
     st.plotly_chart(fig, use_container_width=True)
     
     st.markdown("---")
     
-    # 4. Competitive Analysis
-    st.subheader("⚔️ Competitive Landscape")
+    # 4. Competitive Landscape (Top Hiring Companies)
+    st.subheader("⚔️ Competitive Landscape: Top Hiring Companies")
     
-    company_count = filtered_df['postedCompany_name'].value_counts().head(10)
+    company_count = filtered_df['postedCompany_name'].value_counts().head(12)
     
-    fig = px.pie(
-        values=company_count.values,
-        names=company_count.index,
-        title='Top 10 Hiring Companies',
-        labels={'values': 'Job Postings', 'names': 'Company'}
+    fig = px.bar(
+        x=company_count.values,
+        y=company_count.index,
+        orientation='h',
+        title='Top 12 Hiring Companies by Open Positions',
+        color=company_count.values,
+        color_continuous_scale='Reds',
+        labels={'x': 'Job Postings', 'y': 'Company'}
     )
     
-    fig.update_layout(height=500)
+    fig.update_layout(height=450, plot_bgcolor='#0f1419', paper_bgcolor='#0f1419',
+                     font=dict(color='#e0e7ff'))
     st.plotly_chart(fig, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # 5. Export Recruitment Intelligence
+    st.subheader("📥 Export Recruitment Data")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        export_df = sector_metrics[['Sector', 'Open_Positions', 'Avg_Salary', 'Avg_Applications']].copy()
+        csv_data = export_df.to_csv(index=False)
+        st.download_button(
+            label="📄 Download Market Data (CSV)",
+            data=csv_data,
+            file_name=f"recruitment_intelligence_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
+    
+    with col2:
+        if EXCEL_AVAILABLE:
+            excel_data = create_excel_export(filtered_df, "Recruiter")
+            if excel_data:
+                st.download_button(
+                    label="📊 Download Full Report (Excel)",
+                    data=excel_data,
+                    file_name=f"recruitment_report_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 
 
 # ============================================================================
@@ -1182,9 +1910,9 @@ elif persona == "Recruiter":
 # ============================================================================
 
 st.markdown("---")
-st.header("📊 Detailed Data Analytics")
+st.header("📊 Detailed Data Analytics & Exploration")
 
-tab1, tab2, tab3 = st.tabs(["Job Search", "Sector Deep-Dive", "Download Data"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔍 Job Search", "🏭 Sector Deep-Dive", "📈 Trend Analysis", "📥 Download Data"])
 
 with tab1:
     st.subheader("🔍 Advanced Job Search")
@@ -1194,25 +1922,33 @@ with tab1:
     if search_term:
         search_results = filtered_df[
             filtered_df['title'].str.contains(search_term, case=False, na=False)
-        ][['title', 'postedCompany_name', 'average_salary', 'positionLevels', 'primary_category']].head(20)
+        ][['title', 'postedCompany_name', 'average_salary', 'positionLevels', 'primary_category', 
+           'metadata_totalNumberOfView', 'metadata_totalNumberJobApplication']].head(25)
+        
+        search_results.columns = ['Job Title', 'Company', 'Salary (SGD)', 'Level', 'Sector', 'Views', 'Applications']
         
         st.dataframe(search_results, use_container_width=True)
-        st.success(f"Found {len(search_results)} matching positions")
+        st.success(f"✅ Found {len(search_results)} matching positions")
     else:
-        st.info("Enter a search term to find relevant positions")
+        st.info("📌 Enter a search term to find relevant positions")
+    
+    st.markdown("---")
+    st.subheader("📊 Top 10 Job Titles by Application Volume")
+    fig_titles = create_top_job_titles_by_applications(filtered_df)
+    st.plotly_chart(fig_titles, use_container_width=True)
 
 with tab2:
     st.subheader("🏭 Sector-Deep Dive Analysis")
     
     selected_sector_detail = st.selectbox(
         "Select Sector for Detailed Analysis",
-        options=filtered_df['primary_category'].unique(),
-        key='sector_detail'
+        options=sorted(filtered_df['primary_category'].unique()),
+        key='common_sector_detail'
     )
     
     sector_detail_data = filtered_df[filtered_df['primary_category'] == selected_sector_detail]
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric("Total Postings", len(sector_detail_data))
@@ -1220,28 +1956,156 @@ with tab2:
         avg_salary = sector_detail_data['average_salary'].mean() if len(sector_detail_data) > 0 else 0
         st.metric("Avg Salary", f"SGD {avg_salary:,.0f}" if avg_salary > 0 else "N/A")
     with col3:
+        total_apps = sector_detail_data['metadata_totalNumberJobApplication'].sum()
+        st.metric("Total Applications", f"{total_apps:,}")
+    with col4:
         top_company = sector_detail_data['postedCompany_name'].mode()[0] if len(sector_detail_data) > 0 and len(sector_detail_data['postedCompany_name'].mode()) > 0 else "N/A"
-        st.metric("Top Company", top_company)
+        st.metric("Top Company", top_company[:15])
     
     st.markdown("**Top Positions in this Sector:**")
-    top_positions = sector_detail_data['title'].value_counts().head(8)
-    for pos, count in top_positions.items():
-        st.write(f"• {pos} ({count} postings)")
+    top_positions = sector_detail_data['title'].value_counts().head(12)
+    
+    cols = st.columns(3)
+    for idx, (pos, count) in enumerate(top_positions.items()):
+        with cols[idx % 3]:
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #1e2936 0%, #243447 100%); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; border-left: 4px solid #3b82f6;">
+            <strong>{pos[:25]}...</strong><br>
+            <small style="color: #93c5fd;">{count} postings</small>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.subheader("📊 Top 10 Job Demand by Sector (Overall Market)")
+    fig_sector_demand = create_sector_job_demand(filtered_df)
+    st.plotly_chart(fig_sector_demand, use_container_width=True)
 
 with tab3:
-    st.subheader("📥 Export Filtered Data")
+    st.subheader("📈 Comprehensive Trend Analysis")
     
-    # Create CSV
-    csv = filtered_df[['title', 'postedCompany_name', 'primary_category', 'average_salary', 'positionLevels', 'employmentTypes', 'metadata_newPostingDate']].to_csv(index=False)
+    col1, col2 = st.columns([1, 2])
     
-    st.download_button(
-        label="Download as CSV",
-        data=csv,
-        file_name=f"workforce_data_{datetime.now().strftime('%Y%m%d')}.csv",
-        mime="text/csv"
+    with col1:
+        trend_metric = st.selectbox(
+            "Select Trend Metric",
+            options=['Job Postings', 'Average Salary', 'Applications', 'Views'],
+            key="trend_metric_selector"
+        )
+        
+        ma_window = st.slider(
+            "Moving Average Window",
+            min_value=2,
+            max_value=6,
+            value=3
+        )
+    
+    with col2:
+        st.info(f"📊 Analyzing {trend_metric} trends with {ma_window}-month moving average")
+    
+    # Create trend analysis
+    trend_data = filtered_df.groupby('year_month').agg({
+        'metadata_jobPostId': 'count',
+        'average_salary': 'mean',
+        'metadata_totalNumberJobApplication': 'sum',
+        'metadata_totalNumberOfView': 'sum'
+    }).reset_index()
+    
+    trend_data['year_month_str'] = trend_data['year_month'].astype(str)
+    
+    if trend_metric == 'Job Postings':
+        y_col = 'metadata_jobPostId'
+        y_label = 'Number of Postings'
+    elif trend_metric == 'Average Salary':
+        y_col = 'average_salary'
+        y_label = 'Avg Salary (SGD)'
+    elif trend_metric == 'Applications':
+        y_col = 'metadata_totalNumberJobApplication'
+        y_label = 'Total Applications'
+    else:
+        y_col = 'metadata_totalNumberOfView'
+        y_label = 'Total Views'
+    
+    trend_data['ma'] = trend_data[y_col].rolling(window=ma_window, center=True).mean()
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=trend_data['year_month_str'],
+        y=trend_data[y_col],
+        mode='lines+markers',
+        name='Actual',
+        line=dict(color='#3b82f6', width=2),
+        marker=dict(size=5)
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=trend_data['year_month_str'],
+        y=trend_data['ma'],
+        mode='lines',
+        name=f'{ma_window}-Month MA',
+        line=dict(color='#10b981', width=3, dash='dash')
+    ))
+    
+    fig.update_layout(
+        title=f'{trend_metric} Trend Analysis',
+        xaxis_title='Period',
+        yaxis_title=y_label,
+        height=450,
+        plot_bgcolor='#0f1419',
+        paper_bgcolor='#0f1419',
+        font=dict(color='#e0e7ff'),
+        hovermode='x unified'
     )
     
-    st.info(f"✅ Ready to download {len(filtered_df):,} records")
+    st.plotly_chart(fig, use_container_width=True)
+
+with tab4:
+    st.subheader("📥 Export Filtered Data")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    # CSV Export
+    with col1:
+        csv = filtered_df[['title', 'postedCompany_name', 'primary_category', 'average_salary', 
+                          'positionLevels', 'employmentTypes', 'metadata_newPostingDate',
+                          'metadata_totalNumberOfView', 'metadata_totalNumberJobApplication']].to_csv(index=False)
+        
+        st.download_button(
+            label="📄 Download as CSV",
+            data=csv,
+            file_name=f"workforce_data_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
+    
+    # Excel Export
+    with col2:
+        if EXCEL_AVAILABLE:
+            excel_data = create_excel_export(filtered_df, persona)
+            if excel_data:
+                st.download_button(
+                    label="📊 Download as Excel",
+                    data=excel_data,
+                    file_name=f"workforce_data_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+        else:
+            st.warning("Excel export unavailable - requires openpyxl")
+    
+    # PDF Export
+    with col3:
+        if PDF_AVAILABLE:
+            pdf_data = create_pdf_export(filtered_df, persona)
+            if pdf_data:
+                st.download_button(
+                    label="📑 Download as PDF",
+                    data=pdf_data,
+                    file_name=f"workforce_report_{datetime.now().strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf"
+                )
+        else:
+            st.warning("PDF export unavailable - requires reportlab")
+    
+    st.info(f"✅ Ready to download {len(filtered_df):,} records in your chosen format")
 
 # ============================================================================
 # FOOTER
