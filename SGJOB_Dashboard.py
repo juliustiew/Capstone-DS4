@@ -1214,12 +1214,12 @@ def create_sector_job_demand(_df: pd.DataFrame) -> go.Figure:
 # SIDEBAR: PERSONA SELECTION & FILTERS
 # ============================================================================
 
+# Initialize session state for filters
+if 'filter_reset' not in st.session_state:
+    st.session_state.filter_reset = False
+
 # Removed external placeholder image to prevent connectivity issues
 # Logo section can be added later with local file
-
-# ============================================================================
-# SIDEBAR: PERSONA SELECTION & FILTERS
-# ============================================================================
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 👤 SELECT YOUR PERSONA")
@@ -1242,43 +1242,121 @@ def load_and_preprocess():
 
 df = load_and_preprocess()
 
-# Collapsible filter section
-with st.sidebar.expander("🎛️ FILTERS", expanded=True):
-    st.markdown("**Time Period**")
-    available_years = sorted(df['year'].dropna().unique())
-    selected_years = st.multiselect(
-        "Filter by Year",
-        options=available_years,
-        default=available_years,
-        key="years_filter"
-    )
+# Pre-compute filter options once
+@st.cache_data
+def get_filter_options(_df: pd.DataFrame):
+    """Get all available filter options from data"""
+    return {
+        'years': sorted(_df['year'].dropna().unique().astype(int).tolist()),
+        'sectors': sorted(_df['primary_category'].unique().tolist()),
+        'employment_types': sorted(_df['employmentTypes'].unique().tolist()),
+        'position_levels': sorted(_df['positionLevels'].dropna().unique().tolist())
+    }
+
+filter_options = get_filter_options(df)
+
+# Collapsible filter section with improved UX
+with st.sidebar.expander("🎛️ APPLY FILTERS", expanded=True):
+    col1, col2 = st.columns([3, 1])
     
+    with col1:
+        st.markdown("**Time Period**")
+    with col2:
+        if st.button("Reset", key="reset_filters_button", help="Reset all filters to default"):
+            st.session_state.filter_reset = True
+    
+    # Year slider for better UX
+    year_range = st.slider(
+        "Select Year Range",
+        min_value=int(min(filter_options['years'])),
+        max_value=int(max(filter_options['years'])),
+        value=(int(min(filter_options['years'])), int(max(filter_options['years']))),
+        step=1,
+        key="year_range_filter"
+    )
+    selected_years = [y for y in filter_options['years'] if year_range[0] <= y <= year_range[1]]
+    
+    st.markdown("---")
     st.markdown("**Industry & Employment**")
-    available_sectors = sorted(df['primary_category'].unique())
-    selected_sectors = st.multiselect(
-        "Filter by Industry Sector",
-        options=available_sectors,
-        default=available_sectors[:8],
-        key="sector_filter"
+    
+    # Sector selection with "Select All" option
+    sector_options = ['All Sectors'] + filter_options['sectors']
+    selected_sector_option = st.selectbox(
+        "Industry Sector",
+        options=sector_options,
+        index=0,
+        key="sector_filter_main"
     )
     
-    employment_types = sorted(df['employmentTypes'].unique())
-    selected_employment = st.multiselect(
-        "Filter by Employment Type",
-        options=employment_types,
-        default=employment_types,
-        key="employment_filter"
+    if selected_sector_option == 'All Sectors':
+        selected_sectors = filter_options['sectors']
+    else:
+        selected_sectors = [selected_sector_option]
+    
+    # Employment type with "Select All" option
+    employment_options = ['All Types'] + filter_options['employment_types']
+    selected_employment_option = st.selectbox(
+        "Employment Type",
+        options=employment_options,
+        index=0,
+        key="employment_filter_main"
     )
+    
+    if selected_employment_option == 'All Types':
+        selected_employment = filter_options['employment_types']
+    else:
+        selected_employment = [selected_employment_option]
+    
+    # Salary range filter
+    st.markdown("---")
+    st.markdown("**Salary Range (SGD)**")
+    salary_range = st.slider(
+        "Monthly Salary Range",
+        min_value=0,
+        max_value=20000,
+        value=(0, 20000),
+        step=500,
+        key="salary_range_filter"
+    )
+    
+    # Position level filter
+    st.markdown("---")
+    st.markdown("**Position Level**")
+    position_options = ['All Levels'] + filter_options['position_levels']
+    selected_position_option = st.selectbox(
+        "Career Level",
+        options=position_options,
+        index=0,
+        help="Filter by job position level/seniority",
+        key="position_level_filter_main"
+    )
+    
+    if selected_position_option == 'All Levels':
+        selected_position_levels = filter_options['position_levels']
+    else:
+        selected_position_levels = [selected_position_option]
 
-# Apply filters with validation
-filtered_df = df.copy()
+# Apply filters with validation - optimized version
+@st.cache_data
+def apply_filters(_df: pd.DataFrame, years: tuple, sectors: list, employment: list, salary: tuple, position_levels: list) -> pd.DataFrame:
+    """Apply all filters to dataframe - cached for performance"""
+    result = _df.copy()
+    
+    if years:
+        result = result[result['year'].isin(years)]
+    if sectors:
+        result = result[result['primary_category'].isin(sectors)]
+    if employment:
+        result = result[result['employmentTypes'].isin(employment)]
+    if position_levels:
+        result = result[result['positionLevels'].isin(position_levels)]
+    if salary[0] > 0 or salary[1] < 20000:
+        result = result[(result['average_salary'] >= salary[0]) & (result['average_salary'] <= salary[1])]
+    
+    return result
 
-if selected_years:
-    filtered_df = filtered_df[filtered_df['year'].isin(selected_years)]
-if selected_sectors:
-    filtered_df = filtered_df[filtered_df['primary_category'].isin(selected_sectors)]
-if selected_employment:
-    filtered_df = filtered_df[filtered_df['employmentTypes'].isin(selected_employment)]
+# Cache the filtered dataframe
+filtered_df = apply_filters(df, tuple(selected_years), selected_sectors, selected_employment, salary_range, selected_position_levels)
 
 # Validate filtered dataset
 if len(filtered_df) == 0:
@@ -1301,12 +1379,16 @@ if persona == "Individual":
             min_value=1000,
             max_value=15000,
             value=5000,
-            step=500
+            step=500,
+            key="individual_salary_slider"
         )
         
-        preferred_role = st.selectbox(
-            "Preferred Role",
-            options=['Analyst', 'Developer', 'Engineer', 'Manager', 'Any'],
+        st.markdown("**Position Level**")
+        preferred_role = st.multiselect(
+            "Preferred Career Level(s)",
+            options=filter_options['position_levels'],
+            default=[filter_options['position_levels'][0]] if filter_options['position_levels'] else [],
+            help="Select career levels you're interested in",
             key="individual_preferred_role"
         )
 
@@ -1318,7 +1400,8 @@ elif persona == "Government Agency":
             max_value=1.0,
             value=0.7,
             step=0.1,
-            help="Higher values emphasize severe labor shortages"
+            help="Higher values emphasize severe labor shortages",
+            key="shortage_sensitivity_slider"
         )
         
         st.markdown("**Export Options:**")
@@ -1341,7 +1424,8 @@ elif persona == "Recruiter":
             "Minimum Vacancies per Posting",
             min_value=1,
             max_value=20,
-            value=1
+            value=1,
+            key="recruiter_min_vacancy_slider"
         )
 
 st.sidebar.markdown("---")
@@ -1368,6 +1452,26 @@ st.markdown("""
     <p style="color: #dbeafe; margin: 0.75rem 0 0 0; font-size: 1.15rem; font-weight: 500;">Transform raw industrial job data into actionable labor market insights</p>
 </div>
 """, unsafe_allow_html=True)
+
+# Filter Status Bar
+filter_status_col1, filter_status_col2 = st.columns([3, 1])
+with filter_status_col1:
+    filter_pct = int((len(filtered_df) / len(df) * 100)) if len(df) > 0 else 0
+    st.markdown(f"""
+    <div style="background: linear-gradient(90deg, rgba(16, 185, 129, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%); 
+                padding: 1rem; border-radius: 0.75rem; border-left: 4px solid #10b981; margin-bottom: 1.5rem;">
+    <strong>📊 Active View:</strong> <span style="color: #10b981; font-weight: bold;">{len(filtered_df):,}</span> jobs 
+    (<span style="color: #60a5fa;">{filter_pct}%</span> of total dataset)
+    </div>
+    """, unsafe_allow_html=True)
+
+with filter_status_col2:
+    if len(filtered_df) < len(df):
+        st.markdown(f"""
+        <div style="text-align: right; padding: 1rem;">
+        <small style="color: #93c5fd;">Filters Active ✓</small>
+        </div>
+        """, unsafe_allow_html=True)
 
 # KPI Cards
 col1, col2, col3, col4 = st.columns(4)
