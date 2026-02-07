@@ -530,7 +530,7 @@ def calculate_employment_heatmap_data(_df: pd.DataFrame) -> pd.DataFrame:
 @st.cache_data
 def calculate_skill_gaps(_df: pd.DataFrame) -> Tuple[Dict, Dict]:
     """
-    Analyze current market skills vs. emerging needs.
+    Analyze current market skills vs. emerging needs using job titles and categories.
     
     Args:
         _df: Processed DataFrame
@@ -542,23 +542,27 @@ def calculate_skill_gaps(_df: pd.DataFrame) -> Tuple[Dict, Dict]:
     if len(_df) == 0 or _df.empty or 'title' not in _df.columns:
         return {}, {}
     
-    # Extract skills from job titles
+    # Create combined searchable text from titles and categories
+    searchable_text = (_df['title'].fillna('').str.lower() + ' ' + 
+                       _df['categories'].fillna('').str.lower())
+    
+    # Extract skills from combined job data
     common_skills = {
-        'Python': _df['title'].str.contains('Python', case=False, na=False).sum() if 'title' in _df.columns else 0,
-        'Java': _df['title'].str.contains('Java', case=False, na=False).sum() if 'title' in _df.columns else 0,
-        'C++': _df['title'].str.contains(r'C\+\+|C Plus Plus', case=False, na=False, regex=True).sum() if 'title' in _df.columns else 0,
-        'JavaScript': _df['title'].str.contains('JavaScript|Node', case=False, na=False).sum() if 'title' in _df.columns else 0,
-        'SQL': _df['title'].str.contains('SQL', case=False, na=False).sum() if 'title' in _df.columns else 0,
-        'Cloud': _df['title'].str.contains('AWS|Azure|GCP|Cloud', case=False, na=False).sum() if 'title' in _df.columns else 0,
-        'Data': _df['title'].str.contains('Data|Analytics|BI', case=False, na=False).sum() if 'title' in _df.columns else 0,
-        'AI/ML': _df['title'].str.contains('AI|Machine Learning|ML', case=False, na=False).sum() if 'title' in _df.columns else 0,
+        'Python': searchable_text.str.contains('python', case=False, na=False).sum(),
+        'Java': searchable_text.str.contains('java', case=False, na=False).sum(),
+        'C++': searchable_text.str.contains(r'c\+\+|c plus plus', case=False, na=False, regex=True).sum(),
+        'JavaScript': searchable_text.str.contains('javascript|node|typescript', case=False, na=False).sum(),
+        'SQL': searchable_text.str.contains('sql|database', case=False, na=False).sum(),
+        'Cloud': searchable_text.str.contains('aws|azure|gcp|cloud|cloud computing', case=False, na=False).sum(),
+        'Data': searchable_text.str.contains('data|analytics|business intelligence|bi', case=False, na=False).sum(),
+        'AI/ML': searchable_text.str.contains('ai|machine learning|ml|artificial intelligence', case=False, na=False).sum(),
     }
     
     emerging_skills = {
         'Cloud': common_skills['Cloud'],
         'AI/ML': common_skills['AI/ML'],
         'Data': common_skills['Data'],
-        'DevOps': _df['title'].str.contains('DevOps|Docker|Kubernetes', case=False, na=False).sum() if 'title' in _df.columns else 0,
+        'DevOps': searchable_text.str.contains('devops|docker|kubernetes|containers', case=False, na=False).sum(),
     }
     
     return common_skills, emerging_skills
@@ -701,14 +705,38 @@ class PersonalizedRecommender:
         return sector_growth
     
     def _calc_skill_match(self, sector: str, user_skills: List[str]) -> str:
-        """Calculate skill match for sector."""
+        """Calculate skill match for sector based on job market data."""
+        if not user_skills:
+            return "Developing"
+        
         sector_df = self.df[self.df['primary_category'] == sector]
-        match_count = sum(1 for skill in user_skills if (sector_df['title'].str.contains(skill, case=False, na=False)).any())
-        match_pct = (match_count / max(len(user_skills), 1)) * 100
+        if len(sector_df) == 0:
+            return "N/A"
+        
+        # Create searchable text from multiple fields for better matching
+        sector_df = sector_df.copy()
+        sector_df['searchable_text'] = (
+            sector_df['title'].fillna('').str.lower() + ' ' + 
+            sector_df['categories'].fillna('').str.lower()
+        )
+        
+        # Count matches across the searchable text
+        match_count = 0
+        for skill in user_skills:
+            skill_lower = skill.lower()
+            if (sector_df['searchable_text'].str.contains(skill_lower, case=False, na=False)).any():
+                match_count += 1
+        
+        # Calculate match percentage
+        match_pct = (match_count / len(user_skills)) * 100 if user_skills else 0
+        
+        # Return categorized match level
         if match_pct >= 75:
-            return "Perfect ✓"
+            return "Excellent ✓✓"
         elif match_pct >= 50:
-            return "Good →"
+            return "Good ✓"
+        elif match_pct >= 25:
+            return "Fair →"
         else:
             return "Developing"
 
